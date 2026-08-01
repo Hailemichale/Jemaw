@@ -7,8 +7,10 @@ import { Plus, Users, Calendar, Activity } from 'lucide-solid';
 export default function DashboardPage() {
   const navigate = useNavigate();
   const [user, setUser] = createSignal<any>(null);
+  const [userProfile, setUserProfile] = createSignal<any>(null);
   const [groups, setGroups] = createSignal<any[]>([]);
   const [loading, setLoading] = createSignal(true);
+  const [isMyBirthday, setIsMyBirthday] = createSignal(false);
 
   createEffect(() => {
     const fetchSession = async () => {
@@ -20,6 +22,10 @@ export default function DashboardPage() {
       }
 
       setUser(session.user);
+      
+      // Fetch user profile from DB to get the most up-to-date name
+      const { data: profileData } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
+      setUserProfile(profileData || {});
 
       // Fetch user's groups
       const { data: userGroups } = await supabase
@@ -32,8 +38,169 @@ export default function DashboardPage() {
         
       if (userGroups) {
         setGroups(userGroups);
+        
+        // Check if it's user's birthday today
+        if (session.user.user_metadata?.birthdate) {
+          const bd = new Date(session.user.user_metadata.birthdate);
+          const today = new Date();
+          if (bd.getMonth() === today.getMonth() && bd.getDate() === today.getDate()) {
+            setIsMyBirthday(true);
+          }
+        }
+
+        // Fire and forget background tasks
+        syncBirthdaysToEvents(session.user.id, session.user.user_metadata, userGroups).catch(console.error);
+        checkAndSendReminders(session.user.id, userGroups).catch(console.error);
       }
       setLoading(false);
+    };
+
+    const syncBirthdaysToEvents = async (userId: string, userMeta: any, userGroups: any[]) => {
+      const birthdateStr = userMeta.birthdate;
+      const fullName = userMeta.full_name;
+      if (!birthdateStr || !fullName || userGroups.length === 0) return;
+
+      const birthdate = new Date(birthdateStr);
+      const today = new Date();
+      let nextBirthday = new Date(today.getFullYear(), birthdate.getMonth(), birthdate.getDate());
+      
+      if (nextBirthday < today && (nextBirthday.getMonth() !== today.getMonth() || nextBirthday.getDate() !== today.getDate())) {
+        nextBirthday.setFullYear(today.getFullYear() + 1);
+      }
+
+      const yyyy = nextBirthday.getFullYear();
+      const mm = String(nextBirthday.getMonth() + 1).padStart(2, '0');
+      const dd = String(nextBirthday.getDate()).padStart(2, '0');
+      const eventDateStr = `${yyyy}-${mm}-${dd}`;
+      const title = `${fullName}'s Birthday 🎉`;
+
+      for (const group of userGroups) {
+        const { data: existing } = await supabase
+          .from('events')
+          .select('id')
+          .eq('group_id', group.id)
+          .eq('title', title)
+          .eq('date', eventDateStr);
+          
+        if (!existing || existing.length === 0) {
+          await supabase.from('events').insert({
+            group_id: group.id,
+            title: title,
+            date: eventDateStr,
+            user_id: userId
+          });
+        }
+      }
+    };
+
+    const checkAndSendReminders = async (userId: string, userGroups: any[]) => {
+      const groupIds = userGroups.map(g => g.id);
+      if (groupIds.length === 0) return;
+
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      const nextWeek = new Date(today);
+      nextWeek.setDate(today.getDate() + 7);
+
+      const { data: upcomingEvents } = await supabase
+        .from('events')
+        .select('*, groups(name)')
+        .in('group_id', groupIds)
+        .gte('date', today.toISOString())
+        .lte('date', nextWeek.toISOString());
+
+      if (!upcomingEvents || upcomingEvents.length === 0) return;
+
+      const eventIds = upcomingEvents.map(e => e.id);
+      const { data: sentActivities } = await supabase
+        .from('activities')
+        .select('action_type, description')
+        .in('action_type', ['reminder_7d', 'birthday_wish_today'])
+        .in('description', eventIds);
+
+      const sentReminders = sentActivities?.filter(a => a.action_type === 'reminder_7d').map(a => a.description) || [];
+      const sentWishes = sentActivities?.filter(a => a.action_type === 'birthday_wish_today').map(a => a.description) || [];
+
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      if (!apiKey) return;
+
+      const FUN_GIFS = [
+        'https://media.giphy.com/media/3o7TKSjRrfIPjeiVyM/giphy.gif',
+        'https://media.giphy.com/media/l0HlOBZcl7mbV6VgI/giphy.gif',
+        'https://media.giphy.com/media/xT0xeJpnrWC4XWblWQ/giphy.gif',
+        'https://media.giphy.com/media/11sBLVxNs7v6WA/giphy.gif',
+        'https://media.giphy.com/media/3o6ozh46EBu2EQvzws/giphy.gif',
+        'https://media.giphy.com/media/26AHONQ79FdWZhAI0/giphy.gif'
+      ];
+      
+      const BDAY_GIFS = [
+        'https://media.giphy.com/media/l4KibWpBGWchSqCRy/giphy.gif',
+        'https://media.giphy.com/media/26FPpSuhgHvU6hP32/giphy.gif',
+        'https://media.giphy.com/media/3o6MbhYjXivpe320qQ/giphy.gif'
+      ];
+
+      for (const event of upcomingEvents) {
+        const eventDate = new Date(event.date);
+        eventDate.setHours(0,0,0,0);
+        
+        const isToday = eventDate.getTime() === today.getTime();
+        const isFuture = eventDate.getTime() > today.getTime();
+        const isBirthdayEvent = event.title.toLowerCase().includes('birthday');
+
+        // Logic 1: Exact Day Birthday Wish
+        if (isToday && isBirthdayEvent && !sentWishes.includes(event.id)) {
+          const prompt = `Write a deeply personal, heartwarming, and highly energetic 2-sentence birthday wish for a group member whose birthday is today! The event is called "${event.title}". Use lots of emojis. Do not use quotes. Make it sound like it's coming from the whole friend group.`;
+          try {
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`, {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+            });
+            if (!response.ok) continue;
+            const data = await response.json();
+            const text = data.candidates[0].content.parts[0].text;
+            const bdayGif = BDAY_GIFS[Math.floor(Math.random() * BDAY_GIFS.length)];
+            
+            await supabase.from('messages').insert({
+              group_id: event.group_id,
+              user_id: userId,
+              content: `🎂 **[AI BIRTHDAY WISH]**\n\n${text}\n\n![Birthday GIF](${bdayGif})`
+            });
+            await supabase.from('activities').insert({
+              group_id: event.group_id,
+              user_id: userId,
+              action_type: 'birthday_wish_today',
+              description: event.id
+            });
+          } catch (e) { console.error(e); }
+        }
+
+        // Logic 2: 7-Day Reminder
+        if (isFuture && !sentReminders.includes(event.id)) {
+          const prompt = `Write a super energetic, highly attractive, and fun 2-sentence reminder for an upcoming group event called "${event.title}" happening on ${new Date(event.date).toLocaleDateString()} (which is coming up soon!). Use lots of emojis. Do not use quotes. Remind the group to get ready!`;
+          try {
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`, {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+            });
+            if (!response.ok) continue;
+            const data = await response.json();
+            const text = data.candidates[0].content.parts[0].text;
+            const randomGif = FUN_GIFS[Math.floor(Math.random() * FUN_GIFS.length)];
+            
+            await supabase.from('messages').insert({
+              group_id: event.group_id,
+              user_id: userId,
+              content: `🤖 **[AI AUTO-REMINDER]**\n\n${text}\n\n![Hype GIF](${randomGif})`
+            });
+            await supabase.from('activities').insert({
+              group_id: event.group_id,
+              user_id: userId,
+              action_type: 'reminder_7d',
+              description: event.id
+            });
+          } catch (e) { console.error(e); }
+        }
+      }
     };
 
     fetchSession();
@@ -52,27 +219,58 @@ export default function DashboardPage() {
   });
 
   return (
-    <Show when={!loading()} fallback={
-      <div class="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
-        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-      </div>
-    }>
-      <MainLayout title="Dashboard">
-        <div class="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <MainLayout title="Dashboard">
+      <Show when={!loading()} fallback={
+        <div class="space-y-8 animate-in fade-in p-2">
+          {/* Welcome Banner Skeleton */}
+          <div class="h-48 md:h-64 rounded-3xl bg-slate-200/50 dark:bg-slate-800/50 animate-pulse border border-slate-200/50 dark:border-slate-700/50"></div>
           
+          {/* Widgets Row Skeleton */}
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div class="h-28 rounded-3xl bg-slate-200/50 dark:bg-slate-800/50 animate-pulse border border-slate-200/50 dark:border-slate-700/50"></div>
+            <div class="h-28 rounded-3xl bg-slate-200/50 dark:bg-slate-800/50 animate-pulse border border-slate-200/50 dark:border-slate-700/50"></div>
+            <div class="h-28 rounded-3xl bg-slate-200/50 dark:bg-slate-800/50 animate-pulse border border-slate-200/50 dark:border-slate-700/50"></div>
+          </div>
+
+          {/* Groups Grid Skeleton */}
+          <div class="pt-4 space-y-6">
+            <div class="h-8 w-40 bg-slate-200/50 dark:bg-slate-800/50 rounded-lg animate-pulse"></div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div class="h-64 rounded-3xl bg-slate-200/50 dark:bg-slate-800/50 animate-pulse border border-slate-200/50 dark:border-slate-700/50"></div>
+              <div class="h-64 rounded-3xl bg-slate-200/50 dark:bg-slate-800/50 animate-pulse border border-slate-200/50 dark:border-slate-700/50"></div>
+              <div class="h-64 rounded-3xl bg-slate-200/50 dark:bg-slate-800/50 animate-pulse border border-slate-200/50 dark:border-slate-700/50"></div>
+            </div>
+          </div>
+        </div>
+      }>
+          <div class="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            
+            {/* Birthday Banner */}
+          <Show when={isMyBirthday()}>
+            <div class="relative overflow-hidden rounded-3xl bg-gradient-to-r from-pink-500 via-rose-500 to-yellow-500 p-8 sm:p-12 text-white shadow-2xl shadow-rose-500/30">
+               <div class="absolute inset-0 bg-[url('https://media.giphy.com/media/26FPpSuhgHvU6hP32/giphy.gif')] opacity-20 mix-blend-overlay bg-cover bg-center"></div>
+               <div class="relative z-10 flex flex-col items-center text-center">
+                 <h1 class="text-4xl sm:text-6xl font-black mb-4 tracking-tight drop-shadow-lg">🎉 HAPPY BIRTHDAY! 🎂</h1>
+                 <p class="text-xl font-medium drop-shadow-md">Wishing you the most amazing day ever, {userProfile()?.full_name?.split(' ')?.[0] || user()?.user_metadata?.full_name?.split(' ')?.[0] || ''}!</p>
+               </div>
+            </div>
+          </Show>
+
           {/* Welcome Banner */}
           <div class="relative overflow-hidden rounded-3xl bg-gradient-to-r from-indigo-600 to-purple-600 p-8 sm:p-10 text-white shadow-lg shadow-indigo-500/20">
             <div class="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay"></div>
             <div class="absolute -right-10 -top-20 w-64 h-64 bg-white/10 rounded-full blur-2xl"></div>
             
             <div class="relative z-10">
-              <h2 class="text-3xl sm:text-4xl font-bold mb-2">Welcome back!</h2>
+              <h2 class="text-3xl sm:text-4xl font-bold mb-2">
+                Welcome back{userProfile()?.full_name ? `, ${userProfile()?.full_name?.split(' ')?.[0]}!` : (user()?.user_metadata?.full_name ? `, ${user()?.user_metadata?.full_name?.split(' ')?.[0]}!` : '!')}
+              </h2>
               <p class="text-indigo-100 max-w-xl text-lg">
                 You have 2 upcoming events this week. Dive into your groups and see what's happening.
               </p>
               
               <div class="mt-8 flex gap-4">
-                <A href="/groups/create" class="inline-flex items-center gap-2 bg-white text-indigo-600 hover:bg-indigo-50 px-5 py-2.5 rounded-xl font-semibold transition-colors">
+                <A href="/groups/create" class="inline-flex items-center gap-2 bg-white text-indigo-600 hover:bg-indigo-50 hover:scale-105 px-5 py-2.5 rounded-xl font-semibold transition-all shadow-sm hover:shadow-md">
                   <Plus size={18} />
                   New Group
                 </A>
@@ -82,8 +280,8 @@ export default function DashboardPage() {
 
           {/* Widgets Row */}
           <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div class="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm flex items-start gap-4">
-              <div class="p-3 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-2xl">
+            <div class="group bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm flex items-start gap-4 hover:-translate-y-1 hover:shadow-md hover:border-indigo-200 dark:hover:border-indigo-800 transition-all duration-300">
+              <div class="p-3 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-2xl group-hover:scale-110 transition-transform">
                 <Users size={24} />
               </div>
               <div>
@@ -92,8 +290,8 @@ export default function DashboardPage() {
               </div>
             </div>
             
-            <div class="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm flex items-start gap-4">
-              <div class="p-3 bg-pink-100 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400 rounded-2xl">
+            <div class="group bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm flex items-start gap-4 hover:-translate-y-1 hover:shadow-md hover:border-pink-200 dark:hover:border-pink-800 transition-all duration-300">
+              <div class="p-3 bg-pink-100 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400 rounded-2xl group-hover:scale-110 transition-transform">
                 <Calendar size={24} />
               </div>
               <div>
@@ -102,8 +300,8 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div class="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm flex items-start gap-4 lg:col-span-1 md:col-span-2">
-              <div class="p-3 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-2xl">
+            <div class="group bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm flex items-start gap-4 lg:col-span-1 md:col-span-2 hover:-translate-y-1 hover:shadow-md hover:border-emerald-200 dark:hover:border-emerald-800 transition-all duration-300">
+              <div class="p-3 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-2xl group-hover:scale-110 transition-transform">
                 <Activity size={24} />
               </div>
               <div>
@@ -131,16 +329,16 @@ export default function DashboardPage() {
                 {(group) => (
                   <A 
                     href={`/groups/${group.id}`}
-                    class="group relative bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-xl hover:shadow-indigo-500/10 hover:border-indigo-500/30 transition-all duration-300 overflow-hidden flex flex-col"
+                    class="group relative bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-xl hover:shadow-indigo-500/10 hover:border-indigo-500/30 hover:-translate-y-1 transition-all duration-300 overflow-hidden flex flex-col"
                   >
                     <div class="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-indigo-500/5 to-purple-500/10 rounded-full blur-2xl -mr-10 -mt-10 group-hover:bg-indigo-500/20 transition-colors"></div>
                     
                     <div class="flex items-start justify-between mb-4 relative z-10">
                       <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-900/40 dark:to-purple-900/40 flex items-center justify-center text-indigo-600 dark:text-indigo-400 text-xl font-bold shadow-inner">
-                        {group.name.charAt(0)}
+                        {group?.name?.charAt(0) || '?'}
                       </div>
                       <span class="px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-xs font-semibold rounded-full uppercase tracking-wider">
-                        {group.group_members[0].role}
+                        {group?.group_members?.[0]?.role || 'member'}
                       </span>
                     </div>
                     
@@ -156,7 +354,7 @@ export default function DashboardPage() {
                       <div class="flex -space-x-2">
                         {[1, 2, 3].map((i) => (
                           <div class="w-8 h-8 rounded-full border-2 border-white dark:border-slate-900 bg-slate-200 dark:bg-slate-800 overflow-hidden">
-                            <img src={`https://i.pravatar.cc/100?img=${i * 5 + group.name.length}`} class="w-full h-full object-cover" />
+                            <img src={`https://i.pravatar.cc/100?img=${i * 5 + (group?.name?.length || 0)}`} class="w-full h-full object-cover" />
                           </div>
                         ))}
                       </div>
@@ -171,7 +369,7 @@ export default function DashboardPage() {
               {/* Create New Group Card */}
               <A 
                 href="/groups/create"
-                class="group flex flex-col items-center justify-center min-h-[220px] bg-slate-50 dark:bg-slate-900/50 rounded-3xl border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/5 transition-all duration-300"
+                class="group flex flex-col items-center justify-center min-h-[220px] bg-slate-50 dark:bg-slate-900/50 rounded-3xl border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/5 hover:-translate-y-1 transition-all duration-300"
               >
                 <div class="w-14 h-14 rounded-full bg-white dark:bg-slate-800 shadow-sm flex items-center justify-center text-slate-400 group-hover:text-indigo-600 group-hover:scale-110 transition-all mb-4">
                   <Plus size={28} />
@@ -181,9 +379,9 @@ export default function DashboardPage() {
                 </h4>
               </A>
             </div>
+            </div>
           </div>
-        </div>
-      </MainLayout>
-    </Show>
+      </Show>
+    </MainLayout>
   );
 }

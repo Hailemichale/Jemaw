@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/daily/:match*",
+      "destination": "https://api.daily.co/v1/:match*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

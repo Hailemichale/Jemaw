@@ -1,6 +1,6 @@
 import { createSignal } from 'solid-js';
 
-export type WallpaperType = 'default' | 'image' | 'url';
+export type WallpaperType = 'default' | 'image' | 'url' | 'video';
 
 export interface WallpaperState {
   type: WallpaperType;

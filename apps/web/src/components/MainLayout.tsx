@@ -1,4 +1,4 @@
-import { createSignal, Show } from 'solid-js';
+import { createSignal, createEffect, Show } from 'solid-js';
 import type { JSX } from 'solid-js';
 import { A, useLocation, useNavigate } from '@solidjs/router';
 import { supabase } from '../lib/supabase';
@@ -15,6 +15,23 @@ export default function MainLayout(props: MainLayoutProps) {
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = createSignal(false);
   const [isProfileOpen, setIsProfileOpen] = createSignal(false);
+  const [avatarUrl, setAvatarUrl] = createSignal<string | null>(null);
+
+  createEffect(() => {
+    const loadAvatar = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        const { data } = await supabase.from('profiles').select('avatar_url').eq('id', session.user.id).single();
+        if (data?.avatar_url) {
+          setAvatarUrl(data.avatar_url);
+        } else {
+          const local = localStorage.getItem(`profile_avatar_${session.user.id}`);
+          if (local) setAvatarUrl(local);
+        }
+      }
+    };
+    loadAvatar();
+  });
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -46,11 +63,22 @@ export default function MainLayout(props: MainLayoutProps) {
         >
           {/* Custom Wallpaper */}
           <div class="absolute inset-0 bg-slate-950">
-            <img 
-              src={wallpaper().value!} 
-              alt="Custom Wallpaper" 
-              class="w-full h-full object-cover opacity-60 dark:opacity-40 filter blur-[2px] transition-all duration-700" 
-            />
+            <Show when={wallpaper().type === 'video'} fallback={
+              <img 
+                src={wallpaper().value!} 
+                alt="Background Wallpaper" 
+                class="w-full h-full object-cover opacity-60 dark:opacity-40 filter blur-[2px] transition-opacity duration-1000"
+              />
+            }>
+              <video 
+                src={wallpaper().value!} 
+                autoplay 
+                loop 
+                muted 
+                playsinline
+                class="w-full h-full object-cover opacity-60 dark:opacity-40 filter blur-[2px] transition-opacity duration-1000"
+              />
+            </Show>
           </div>
         </Show>
       </div>
@@ -94,13 +122,13 @@ export default function MainLayout(props: MainLayoutProps) {
               return (
                 <A 
                   href={item.path}
-                  class={`flex items-center px-4 py-3.5 rounded-2xl transition-all duration-200 ${
+                  class={`group flex items-center px-4 py-3.5 rounded-2xl transition-all duration-200 ${
                     isActive() 
                       ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold border border-rose-500/20' 
-                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100/50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-200'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100/50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-200 hover:translate-x-1'
                   }`}
                 >
-                  <item.icon size={20} class={`mr-4 ${isActive() ? 'text-rose-500' : 'opacity-70'}`} />
+                  <item.icon size={20} class={`mr-4 transition-transform group-hover:scale-110 ${isActive() ? 'text-rose-500 scale-110' : 'opacity-70'}`} />
                   <span class="font-medium">{item.name}</span>
                 </A>
               );
@@ -114,7 +142,13 @@ export default function MainLayout(props: MainLayoutProps) {
               <p class="text-xs text-slate-600 dark:text-slate-400 mb-4 leading-relaxed">
                 Invite your friends and start managing expenses and memories together.
               </p>
-              <button class="w-full py-2.5 px-4 bg-rose-500 hover:bg-rose-600 text-white text-sm font-medium rounded-xl transition-colors shadow-sm">
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText(window.location.origin);
+                  alert("App link copied to clipboard! Share it with your friends.");
+                }}
+                class="w-full py-2.5 px-4 bg-rose-500 hover:bg-rose-600 text-white text-sm font-medium rounded-xl transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5"
+              >
                 Invite Friends
               </button>
             </div>
@@ -141,19 +175,20 @@ export default function MainLayout(props: MainLayoutProps) {
           <div class="flex items-center gap-4 sm:gap-6">
             
             {/* Search */}
-            <div class="hidden md:flex relative group">
+            <form onSubmit={(e) => { e.preventDefault(); alert("Global search functionality is coming in V3!"); }} class="hidden md:flex relative group">
               <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <Search size={18} class="text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
               </div>
               <input 
                 type="text" 
+                required
                 placeholder="Search groups, events..." 
                 class="pl-10 pr-4 py-2.5 bg-slate-100 dark:bg-slate-900 border-none rounded-2xl w-64 text-sm focus:ring-2 focus:ring-indigo-500/50 dark:text-slate-200 transition-all placeholder-slate-400"
               />
-            </div>
+            </form>
 
             {/* Notifications */}
-            <button class="relative p-2.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full transition-colors">
+            <button onClick={() => alert("You're all caught up! No new notifications.")} class="relative p-2.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full transition-colors">
               <Bell size={20} />
               <span class="absolute top-2 right-2 w-2 h-2 bg-pink-500 rounded-full"></span>
             </button>
@@ -165,8 +200,10 @@ export default function MainLayout(props: MainLayoutProps) {
                 onClick={() => setIsProfileOpen(!isProfileOpen())}
               >
                 <span class="hidden sm:block text-sm font-medium text-slate-700 dark:text-slate-300">My Account</span>
-                <div class="w-9 h-9 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 p-[2px]">
-                  <img src="https://i.pravatar.cc/150?img=32" alt="Avatar" class="w-full h-full rounded-full border-2 border-white dark:border-slate-950 object-cover" />
+                <div class="w-9 h-9 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 p-[2px] flex-shrink-0">
+                  <Show when={avatarUrl()} fallback={<img src="https://i.pravatar.cc/150?img=32" alt="Avatar" class="w-full h-full rounded-full border-2 border-white dark:border-slate-950 object-cover" />}>
+                    <img src={avatarUrl()!} alt="Avatar" class="w-full h-full rounded-full border-2 border-white dark:border-slate-950 object-cover" />
+                  </Show>
                 </div>
               </button>
 
@@ -176,7 +213,7 @@ export default function MainLayout(props: MainLayoutProps) {
                     <p class="text-sm font-semibold text-slate-900 dark:text-white">Logged in</p>
                     <p class="text-xs text-slate-500 truncate mt-0.5">Manage your account</p>
                   </div>
-                  <A href="/profile" class="flex items-center px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                  <A href="/settings" class="flex items-center px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors" onClick={() => setIsProfileOpen(false)}>
                     <Settings size={16} class="mr-3 text-slate-400" />
                     Account Settings
                   </A>
@@ -195,7 +232,7 @@ export default function MainLayout(props: MainLayoutProps) {
         </header>
 
         {/* Scrollable Page Content */}
-        <main class="flex-1 overflow-y-auto p-6 sm:p-10 z-10 relative">
+        <main class="flex-1 overflow-y-auto p-6 sm:p-10 z-10 relative animate-in fade-in duration-500">
           <div class="mx-auto max-w-6xl">
             {props.children}
           </div>
