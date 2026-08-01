@@ -2,7 +2,7 @@ import { createSignal, createEffect, Show, For } from 'solid-js';
 import { A, useNavigate } from '@solidjs/router';
 import { supabase } from '../lib/supabase';
 import MainLayout from '../components/MainLayout';
-import { Plus, Users, Calendar, Activity } from 'lucide-solid';
+import { Plus, Users, Calendar, Activity, Key, X, ArrowRight } from 'lucide-solid';
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -12,6 +12,11 @@ export default function DashboardPage() {
   const [loading, setLoading] = createSignal(true);
   const [isMyBirthday, setIsMyBirthday] = createSignal(false);
 
+  // Join Group Modal State
+  const [isJoinModalOpen, setIsJoinModalOpen] = createSignal(false);
+  const [inviteCode, setInviteCode] = createSignal('');
+  const [isJoining, setIsJoining] = createSignal(false);
+  const [joinError, setJoinError] = createSignal('');
   createEffect(() => {
     const fetchSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -218,8 +223,113 @@ export default function DashboardPage() {
     };
   });
 
+  const handleJoinGroup = async (e: Event) => {
+    e.preventDefault();
+    const code = inviteCode().trim().toUpperCase();
+    if (!code || code.length !== 8) {
+      setJoinError("Please enter a valid 8-character invite code.");
+      return;
+    }
+
+    setIsJoining(true);
+    setJoinError('');
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
+
+      // Find the group by invite code
+      const { data: group, error: fetchError } = await supabase
+        .from('groups')
+        .select('id')
+        .eq('invite_code', code)
+        .single();
+
+      if (fetchError || !group) {
+        throw new Error("Invalid invite code or group not found.");
+      }
+
+      // Join the group
+      const { error: joinErr } = await supabase
+        .from('group_members')
+        .insert({
+          group_id: group.id,
+          user_id: session.user.id,
+          role: 'member'
+        });
+
+      if (joinErr) {
+        if (joinErr.code === '23505') {
+          throw new Error("You are already a member of this group!");
+        }
+        throw new Error(joinErr.message);
+      }
+
+      setIsJoinModalOpen(false);
+      setInviteCode('');
+      navigate(`/groups/${group.id}`);
+      
+    } catch (err: any) {
+      setJoinError(err.message);
+    } finally {
+      setIsJoining(false);
+    }
+  };
+
   return (
     <MainLayout title="Dashboard">
+      {/* Join Group Modal */}
+      <Show when={isJoinModalOpen()}>
+        <div class="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsJoinModalOpen(false)}></div>
+          <div class="bg-white dark:bg-slate-900 rounded-3xl p-8 max-w-md w-full shadow-2xl relative z-10 animate-in zoom-in-95 duration-200 border border-slate-200 dark:border-slate-800">
+            <button 
+              onClick={() => setIsJoinModalOpen(false)} 
+              class="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 bg-slate-100 dark:bg-slate-800 rounded-full transition-colors"
+            >
+              <X size={20} />
+            </button>
+            
+            <div class="flex items-center justify-center w-12 h-12 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-2xl mb-4">
+              <Key size={24} />
+            </div>
+            
+            <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-2">Join a Group</h2>
+            <p class="text-slate-500 dark:text-slate-400 mb-6 text-sm">
+              Enter the 8-character invite code shared by the group creator.
+            </p>
+
+            <form onSubmit={handleJoinGroup}>
+              <Show when={joinError()}>
+                <div class="mb-4 p-3 bg-rose-50 dark:bg-rose-900/30 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 text-sm rounded-xl">
+                  {joinError()}
+                </div>
+              </Show>
+
+              <div class="mb-6">
+                <input
+                  type="text"
+                  required
+                  value={inviteCode()}
+                  onInput={(e) => setInviteCode(e.currentTarget.value.toUpperCase())}
+                  placeholder="e.g. A1B2C3D4"
+                  maxLength={8}
+                  class="w-full text-center text-2xl tracking-widest font-mono bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-4 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all uppercase"
+                />
+              </div>
+
+              <button 
+                type="submit" 
+                disabled={isJoining() || inviteCode().trim().length !== 8}
+                class="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl font-bold shadow-md shadow-indigo-500/20 transition-all flex items-center justify-center gap-2 active:scale-95"
+              >
+                {isJoining() ? 'Joining...' : 'Join Group'} <ArrowRight size={18} />
+              </button>
+            </form>
+          </div>
+        </div>
+      </Show>
+
       <Show when={!loading()} fallback={
         <div class="space-y-8 animate-in fade-in p-2">
           {/* Welcome Banner Skeleton */}
@@ -274,6 +384,10 @@ export default function DashboardPage() {
                   <Plus size={18} />
                   New Group
                 </A>
+                <button onClick={() => setIsJoinModalOpen(true)} class="inline-flex items-center gap-2 bg-indigo-600 text-white hover:bg-indigo-500 hover:scale-105 px-5 py-2.5 rounded-xl font-semibold transition-all shadow-sm hover:shadow-md border border-indigo-500/30">
+                  <Key size={18} />
+                  Join Group
+                </button>
               </div>
             </div>
           </div>
