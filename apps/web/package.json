@@ -10,8 +10,8 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^6.1.1",
-    "@tauri-apps/cli": "^1.6.0",
     "@tailwindcss/vite": "^4.3.3",
+    "@tauri-apps/cli": "^1.6.0",
     "@types/leaflet": "^1.9.22",
     "autoprefixer": "^10.5.4",
     "postcss": "^8.5.25",
@@ -24,6 +24,7 @@
     "@capacitor/android": "^6.1.1",
     "@capacitor/core": "^6.1.1",
     "@capacitor/ios": "^6.1.1",
+    "@capgo/capacitor-updater": "^6.50.2",
     "@daily-co/daily-js": "^0.91.0",
     "@solidjs/router": "^1.0.0",
     "@supabase/supabase-js": "^2.111.0",

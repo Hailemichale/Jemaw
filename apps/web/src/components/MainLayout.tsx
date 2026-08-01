@@ -2,7 +2,7 @@ import { createSignal, createEffect, Show, For } from 'solid-js';
 import type { JSX } from 'solid-js';
 import { A, useLocation, useNavigate } from '@solidjs/router';
 import { supabase } from '../lib/supabase';
-import { LayoutDashboard, Users, Calendar, Settings, Bell, Search, LogOut, Menu, X } from 'lucide-solid';
+import { LayoutDashboard, Users, Calendar, Settings, Bell, Search, LogOut, Menu, X, DownloadCloud } from 'lucide-solid';
 import { wallpaper } from '../store/theme';
 
 interface MainLayoutProps {
@@ -227,8 +227,33 @@ export default function MainLayout(props: MainLayoutProps) {
               );
             })()}
 
-            {/* Notifications */}
+            {/* Downloads Dropdown */}
             <div class="relative group">
+              <button class="relative p-2.5 text-indigo-500 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-900/20 rounded-full transition-colors flex items-center gap-2">
+                <DownloadCloud size={20} />
+                <span class="hidden sm:inline text-sm font-medium">Download App</span>
+              </button>
+              <div class="absolute top-full right-0 mt-2 w-56 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-50 py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none group-hover:pointer-events-auto">
+                <div class="px-4 py-2 border-b border-slate-100 dark:border-slate-800 mb-1">
+                  <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Install Jemaw Native</p>
+                </div>
+                <a href="https://github.com/Hailemichale/Jemaw/releases/latest" target="_blank" class="flex items-center px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                  <span class="mr-3 text-lg">🪟</span> Windows (.exe)
+                </a>
+                <a href="https://github.com/Hailemichale/Jemaw/releases/latest" target="_blank" class="flex items-center px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                  <span class="mr-3 text-lg">🤖</span> Android (.apk)
+                </a>
+                <a href="https://github.com/Hailemichale/Jemaw/releases/latest" target="_blank" class="flex items-center px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                  <span class="mr-3 text-lg">🍎</span> Mac (.dmg)
+                </a>
+                <a href="https://github.com/Hailemichale/Jemaw/releases/latest" target="_blank" class="flex items-center px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                  <span class="mr-3 text-lg">📱</span> iPhone (.ipa)
+                </a>
+              </div>
+            </div>
+
+            {/* Notifications */}
+            <div class="relative group hidden sm:block">
               <button class="relative p-2.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full transition-colors">
                 <Bell size={20} />
               </button>

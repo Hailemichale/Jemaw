@@ -3,6 +3,9 @@ import { render } from 'solid-js/web';
 import { Router } from '@solidjs/router';
 import './index.css';
 import App from './App';
+import { CapacitorUpdater } from '@capgo/capacitor-updater';
+
+CapacitorUpdater.notifyAppReady();
 
 const root = document.getElementById('root');
 
