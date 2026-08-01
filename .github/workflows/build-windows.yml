@@ -28,12 +28,9 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Setup Tauri dependencies (windows)
-        run: cargo install tauri-cli
-
       - name: Build Tauri App
-        run: cargo tauri build
-        working-directory: apps/web/src-tauri
+        run: npx tauri build
+        working-directory: apps/web
 
       - name: Upload Windows Executable
         uses: actions/upload-artifact@v4
