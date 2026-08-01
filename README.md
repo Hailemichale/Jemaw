@@ -88,3 +88,9 @@ Jemaw is built as a modern monorepo to support future expansion to Desktop and M
 ## 📱 Coming Soon
 
 We are currently working on deploying Jemaw as a **Windows Desktop App (.exe)** via Tauri, and native **iOS/Android** applications via Capacitor, wrapping our beautiful SolidJS UI into native mobile shells!
+
+---
+
+## 👨‍💻 Author
+
+**HAILEMICHALE LIJALEM**
