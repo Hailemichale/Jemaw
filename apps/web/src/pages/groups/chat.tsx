@@ -1,7 +1,7 @@
 import { createSignal, createEffect, onCleanup, For, Show } from 'solid-js';
 import { useParams, useNavigate, A } from '@solidjs/router';
 import { supabase } from '../../lib/supabase';
-import { ArrowLeft, Send, Settings, Image as ImageIcon, X, Pencil, Trash2, CornerDownLeft, Paperclip, Heart, Smile, Mic, Square, FileText } from 'lucide-solid';
+import { ArrowLeft, Send, Settings, Image as ImageIcon, X, Pencil, Trash2, CornerDownLeft, Paperclip, Heart, Smile, Mic, Square, FileText, Loader2 } from 'lucide-solid';
 import 'emoji-picker-element';
 
 declare module "solid-js" {
@@ -48,24 +48,13 @@ export default function GroupChat() {
   const [showEmojiPicker, setShowEmojiPicker] = createSignal(false);
   const [isRecording, setIsRecording] = createSignal(false);
   const [recordingTime, setRecordingTime] = createSignal(0);
+  const [isUploading, setIsUploading] = createSignal(false);
   
-  let emojiPickerRef: any;
   let fileInputRef: HTMLInputElement | undefined;
   
   let mediaRecorder: MediaRecorder | null = null;
   let audioChunks: Blob[] = [];
   let recordingInterval: any;
-  
-  createEffect(() => {
-    if (emojiPickerRef) {
-      const handleEmoji = (e: any) => {
-        setNewMessage(prev => prev + e.detail.unicode);
-        setShowEmojiPicker(false);
-      };
-      emojiPickerRef.addEventListener('emoji-click', handleEmoji);
-      onCleanup(() => emojiPickerRef.removeEventListener('emoji-click', handleEmoji));
-    }
-  });
   
   // Settings / Wallpaper state
   const [showSettings, setShowSettings] = createSignal(false);
@@ -334,23 +323,32 @@ export default function GroupChat() {
   };
 
   const handleFileUpload = async (e: Event) => {
-    const file = (e.target as HTMLInputElement).files?.[0];
-    if (!file) return;
+    const input = e.target as HTMLInputElement;
+    if (!input.files || input.files.length === 0) return;
+    const file = input.files[0];
     
+    setIsUploading(true);
     const fileExt = file.name.split('.').pop();
-    const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-    
-    // Using jemaw-files bucket
-    const { data, error } = await supabase.storage.from('jemaw-files').upload(fileName, file);
-    if (data) {
-      const { data: urlData } = supabase.storage.from('jemaw-files').getPublicUrl(fileName);
-      if (file.type.startsWith('image/')) {
-        sendMessageText(`![${file.name}](${urlData.publicUrl})`, 'text');
-      } else {
-        sendMessageText(`[${file.name}](${urlData.publicUrl})`, 'file');
+    const fileName = `${Math.random()}.${fileExt}`;
+
+    try {
+      const { data, error } = await supabase.storage.from('jemaw-files').upload(fileName, file);
+      if (error) {
+        console.error("Upload error:", error);
+        return;
       }
-    } else {
-      alert("Error uploading file: " + error?.message);
+      
+      if (data) {
+        const { data: publicUrlData } = supabase.storage.from('jemaw-files').getPublicUrl(fileName);
+        if (publicUrlData) {
+          // Format: [filename](url)
+          await sendMessageText(`[${file.name}](${publicUrlData.publicUrl})`, 'file');
+        }
+      }
+    } finally {
+      setIsUploading(false);
+      // Reset input
+      input.value = '';
     }
   };
 
@@ -926,10 +924,13 @@ export default function GroupChat() {
                 {/* Paperclip Attachment */}
                 <button 
                   type="button" 
-                  onClick={() => fileInputRef?.click()}
-                  class="p-2 text-slate-400 hover:text-indigo-500 transition-colors"
+                  onClick={() => !isUploading() && fileInputRef?.click()}
+                  disabled={isUploading()}
+                  class="p-2 text-slate-400 hover:text-indigo-500 transition-colors disabled:opacity-50"
                 >
-                  <Paperclip size={20} />
+                  <Show when={isUploading()} fallback={<Paperclip size={20} />}>
+                    <Loader2 size={20} class="animate-spin text-indigo-500" />
+                  </Show>
                 </button>
                 
                 <input 
