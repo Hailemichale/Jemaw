@@ -2,7 +2,7 @@ import { createSignal, createEffect, Show, For } from 'solid-js';
 import type { JSX } from 'solid-js';
 import { A, useLocation, useNavigate } from '@solidjs/router';
 import { supabase } from '../lib/supabase';
-import { LayoutDashboard, Users, Calendar, Settings, Bell, Search, LogOut, Menu, X, DownloadCloud } from 'lucide-solid';
+import { LayoutDashboard, Users, Calendar, Settings, Bell, Search, LogOut, Menu, X, DownloadCloud, Monitor } from 'lucide-solid';
 import { wallpaper } from '../store/theme';
 
 interface MainLayoutProps {
