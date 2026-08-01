@@ -1,0 +1,46 @@
+name: Build Android App (Capacitor)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web app
+        run: npm run build
+        working-directory: apps/web
+
+      - name: Add Capacitor Android
+        run: npx cap add android
+        working-directory: apps/web
+
+      - name: Build Android APK
+        run: ./gradlew assembleDebug
+        working-directory: apps/web/android
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: jemaw-android-apk
+          path: apps/web/android/app/build/outputs/apk/debug/app-debug.apk
