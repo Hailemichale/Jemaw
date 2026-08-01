@@ -18,59 +18,45 @@ export default function GroupCallPage() {
       return;
     }
     
-    const roomName = `jemaw-${(params.id || '').replace(/[^a-zA-Z0-9]/g, '').substring(0, 30)}`;
-    const domain = import.meta.env.VITE_DAILY_DOMAIN || 'jemaw.daily.co';
-    const apiKey = import.meta.env.VITE_DAILY_API_KEY;
-    const roomUrl = `https://${domain}/${roomName}`;
+    const roomName = `Jemaw-GroupCall-${(params.id || '').replace(/[^a-zA-Z0-9]/g, '')}`;
+    const domain = 'meet.systemli.org'; // Reliable community instance without 5min timeout
+    
+    const options = {
+      roomName,
+      width: '100%',
+      height: '100%',
+      parentNode: jitsiContainer,
+      userInfo: {
+        displayName: 'Group Member',
+      },
+      configOverwrite: {
+        prejoinPageEnabled: false,
+        disableDeepLinking: true,
+      },
+      interfaceConfigOverwrite: {
+        SHOW_JITSI_WATERMARK: false,
+        SHOW_BRAND_WATERMARK: false,
+        SHOW_POWERED_BY: false,
+      },
+    };
 
-    const initAPI = async () => {
-      // Attempt to create the room via Daily API proxy
-      try {
-        await fetch(`/api/daily/rooms`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey}`
-          },
-          body: JSON.stringify({
-            name: roomName,
-            privacy: 'public',
-            properties: {
-              enable_screenshare: true,
-              enable_chat: true,
-              start_video_off: false,
-              start_audio_off: false,
-            }
-          })
-        });
-      } catch (e) {
-        console.log("Room likely exists or CORS blocked", e);
-      }
-
-      if (!api) {
-        const DailyIframe = (await import('@daily-co/daily-js')).default;
-        
-        api = DailyIframe.createFrame(jitsiContainer!, {
-          showLeaveButton: true,
-          iframeStyle: {
-            width: '100%',
-            height: '100%',
-            border: 'none',
-          }
-        });
-
-        api.on('left-meeting', () => {
-          navigate(`/groups/${params.id}/chat`);
-        });
-      }
-
-      await api.join({
-        url: roomUrl
+    const initAPI = () => {
+      api = new (window as any).JitsiMeetExternalAPI(domain, options);
+      api.addEventListener('videoConferenceLeft', () => {
+        navigate(`/groups/${params.id}`);
       });
       setLoading(false);
     };
 
-    initAPI();
+    if (!(window as any).JitsiMeetExternalAPI) {
+      const script = document.createElement('script');
+      script.src = `https://${domain}/external_api.js`;
+      script.async = true;
+      script.onload = () => initAPI();
+      document.body.appendChild(script);
+    } else {
+      initAPI();
+    }
   });
 
   onCleanup(() => {

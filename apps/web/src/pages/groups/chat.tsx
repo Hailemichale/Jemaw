@@ -148,67 +148,51 @@ export default function GroupChat() {
   createEffect(() => {
     if (!isCinemaMode()) {
       if (api) {
-        api.destroy();
+        api.dispose();
         api = null;
       }
       return;
     }
     
-    const roomName = `jemaw-${(params.id || '').replace(/[^a-zA-Z0-9]/g, '').substring(0, 30)}`; // Daily max length is usually 40
-    const domain = import.meta.env.VITE_DAILY_DOMAIN || 'jemaw.daily.co';
-    const apiKey = import.meta.env.VITE_DAILY_API_KEY;
-    const roomUrl = `https://${domain}/${roomName}`;
-
-    const initAPI = async () => {
-      // Attempt to create the room via Daily API proxy
-      try {
-        await fetch(`/api/daily/rooms`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey}`
-          },
-          body: JSON.stringify({
-            name: roomName,
-            privacy: 'public',
-            properties: {
-              enable_screenshare: true,
-              enable_chat: true,
-              start_video_off: false,
-              start_audio_off: false,
-            }
-          })
-        });
-      } catch (e) {
-        console.log("Room likely exists or CORS blocked (expected in frontend prototype)", e);
-      }
-
-      if (!api) {
-        // We must import it dynamically or ensure it's loaded
-        const DailyIframe = (await import('@daily-co/daily-js')).default;
-        
-        api = DailyIframe.createFrame(jitsiContainer!, {
-          showLeaveButton: false,
-          iframeStyle: {
-            width: '100%',
-            height: '100%',
-            border: 'none',
-            borderRadius: '12px'
-          }
-        });
-      }
-
-      await api.join({
-        url: roomUrl,
-        userName: profileMap()[currentUserId()]?.full_name || 'Group Member'
-      });
+    const roomName = `Jemaw-GroupCall-${(params.id || '').replace(/[^a-zA-Z0-9]/g, '')}`;
+    const domain = 'meet.systemli.org';
+    
+    const options = {
+      roomName,
+      width: '100%',
+      height: '100%',
+      parentNode: jitsiContainer,
+      userInfo: {
+        displayName: profileMap()[currentUserId()]?.full_name || 'Group Member',
+      },
+      configOverwrite: {
+        prejoinPageEnabled: false,
+        disableDeepLinking: true,
+      },
+      interfaceConfigOverwrite: {
+        SHOW_JITSI_WATERMARK: false,
+        SHOW_BRAND_WATERMARK: false,
+        SHOW_POWERED_BY: false,
+      },
     };
 
-    initAPI();
+    const initAPI = () => {
+      api = new (window as any).JitsiMeetExternalAPI(domain, options);
+    };
+
+    if (!(window as any).JitsiMeetExternalAPI) {
+      const script = document.createElement('script');
+      script.src = `https://${domain}/external_api.js`;
+      script.async = true;
+      script.onload = () => initAPI();
+      document.body.appendChild(script);
+    } else {
+      initAPI();
+    }
   });
 
   onCleanup(() => {
-    if (api) api.destroy();
+    if (api) api.dispose();
   });
 
   const scrollToBottom = () => {
