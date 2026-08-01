@@ -22,8 +22,9 @@
 - 📱 **Fully Responsive UI**: A beautiful, mobile-first design utilizing frosted glass (glassmorphism) and live dynamic backgrounds (like cinematic neon rain).
 - 🔒 **Secure Authentication**: Email and password authentication backed by Supabase Auth.
 - 👥 **Group Management**: Create private groups and invite friends using unique 8-character invite codes.
-- 💬 **Realtime Chat**: Instant messaging powered by Supabase Realtime channels. Supports message editing, un-sending (deleting), and Markdown formatting for bold text and images.
+- 💬 **Rich Realtime Chat**: Instant messaging powered by Supabase. Supports typing indicators, voice messages, file attachments, and a rich emoji picker.
 - 🤖 **AI Chat Summaries**: Missed a lot of messages? Click the Sparkles icon to let Google's Gemini AI summarize the conversation for you instantly.
+- 📍 **Live Location Tracking**: Share your real-time location with your group on an interactive Leaflet map to easily find each other.
 - 💸 **Expense Splitter**: Keep track of group expenses. Add what you paid, and Jemaw automatically calculates exactly "Who owes whom".
 - 🍿 **Cinema Mode**: Instantly jump into a picture-in-picture video call with your group using integrated Jitsi Meet.
 
@@ -33,17 +34,19 @@
 2. **Dashboard**: Users are greeted by a centralized dashboard where they can see their active groups.
 3. **Joining/Creating**: Users can create a new group or join an existing one by entering a friend's invite code.
 4. **Group Hub**: Inside a group, users can seamlessly tab between:
-   - **Chat**: Talking in real-time, sending images, or turning on Cinema Mode for video calls.
+   - **Chat**: Talking in real-time, sending voice notes, images, or jumping on a video call.
+   - **Map**: Seeing exactly where everyone is on the map right now.
    - **Expenses**: Logging shared costs and instantly seeing the settlement math.
 
 ## 🛠️ Technology Stack
 
-Jemaw is built as a modern monorepo to support future expansion to Desktop and Mobile apps.
+Jemaw is built as a modern monorepo supporting Web, Desktop, and Mobile applications.
 
 - **Frontend**: [SolidJS](https://www.solidjs.com/) (for blazing fast reactivity) + [Tailwind CSS](https://tailwindcss.com/).
 - **Backend & Database**: [Supabase](https://supabase.com/) (PostgreSQL).
 - **Build Tool**: [Vite](https://vitejs.dev/).
 - **AI Integration**: Google Gemini API.
+- **Native Apps**: Tauri (Windows Desktop) and Capacitor (iOS/Android).
 
 ## 📦 Getting Started (Local Development)
 
@@ -85,9 +88,15 @@ Jemaw is built as a modern monorepo to support future expansion to Desktop and M
    ```
    Open `http://localhost:5173` in your browser.
 
-## 📱 Coming Soon
+## 📱 Native Apps & Cloud Builds
 
-We are currently working on deploying Jemaw as a **Windows Desktop App (.exe)** via Tauri, and native **iOS/Android** applications via Capacitor, wrapping our beautiful SolidJS UI into native mobile shells!
+Jemaw is configured with **GitHub Actions** for automated native application delivery!
+Every time you push code to the `main` branch, GitHub's free cloud computers automatically build:
+- **Windows Executable (.msi)** via Tauri
+- **Android APK** via Capacitor
+- **iOS Build** via Capacitor
+
+You can download your freshly built apps anytime by navigating to the **Actions** tab on your GitHub repository!
 
 ---
 
