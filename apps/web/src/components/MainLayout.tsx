@@ -1,4 +1,4 @@
-import { createSignal, createEffect, Show } from 'solid-js';
+import { createSignal, createEffect, Show, For } from 'solid-js';
 import type { JSX } from 'solid-js';
 import { A, useLocation, useNavigate } from '@solidjs/router';
 import { supabase } from '../lib/supabase';
@@ -175,23 +175,68 @@ export default function MainLayout(props: MainLayoutProps) {
           <div class="flex items-center gap-4 sm:gap-6">
             
             {/* Search */}
-            <form onSubmit={(e) => { e.preventDefault(); alert("Global search functionality is coming in V3!"); }} class="hidden md:flex relative group">
-              <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search size={18} class="text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-              </div>
-              <input 
-                type="text" 
-                required
-                placeholder="Search groups, events..." 
-                class="pl-10 pr-4 py-2.5 bg-slate-100 dark:bg-slate-900 border-none rounded-2xl w-64 text-sm focus:ring-2 focus:ring-indigo-500/50 dark:text-slate-200 transition-all placeholder-slate-400"
-              />
-            </form>
+            {(() => {
+              const [searchQuery, setSearchQuery] = createSignal('');
+              const [showResults, setShowResults] = createSignal(false);
+
+              const navItems = [
+                { name: 'Dashboard', path: '/' },
+                { name: 'Groups', path: '/groups' },
+                { name: 'Calendar & Events', path: '/calendar' },
+                { name: 'Settings', path: '/settings' },
+                { name: 'Create Group', path: '/groups/create' },
+              ];
+
+              const filteredItems = () => {
+                const q = searchQuery().toLowerCase().trim();
+                if (!q) return [];
+                return navItems.filter(item => item.name.toLowerCase().includes(q));
+              };
+
+              return (
+                <form onSubmit={(e) => { e.preventDefault(); const items = filteredItems(); if (items.length > 0) { navigate(items[0].path); setSearchQuery(''); setShowResults(false); } }} class="hidden md:flex relative group">
+                  <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Search size={18} class="text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                  </div>
+                  <input 
+                    type="text" 
+                    value={searchQuery()}
+                    onInput={(e) => { setSearchQuery(e.currentTarget.value); setShowResults(true); }}
+                    onFocus={() => setShowResults(true)}
+                    onBlur={() => setTimeout(() => setShowResults(false), 200)}
+                    placeholder="Search pages..." 
+                    class="pl-10 pr-4 py-2.5 bg-slate-100 dark:bg-slate-900 border-none rounded-2xl w-64 text-sm focus:ring-2 focus:ring-indigo-500/50 dark:text-slate-200 transition-all placeholder-slate-400"
+                  />
+                  <Show when={showResults() && filteredItems().length > 0}>
+                    <div class="absolute top-full mt-2 left-0 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                      <For each={filteredItems()}>
+                        {(item) => (
+                          <button
+                            type="button"
+                            onMouseDown={() => { navigate(item.path); setSearchQuery(''); setShowResults(false); }}
+                            class="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors flex items-center gap-2"
+                          >
+                            <Search size={14} class="text-slate-400" />
+                            {item.name}
+                          </button>
+                        )}
+                      </For>
+                    </div>
+                  </Show>
+                </form>
+              );
+            })()}
 
             {/* Notifications */}
-            <button onClick={() => alert("You're all caught up! No new notifications.")} class="relative p-2.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full transition-colors">
-              <Bell size={20} />
-              <span class="absolute top-2 right-2 w-2 h-2 bg-pink-500 rounded-full"></span>
-            </button>
+            <div class="relative group">
+              <button class="relative p-2.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full transition-colors">
+                <Bell size={20} />
+              </button>
+              <div class="absolute top-full right-0 mt-2 w-64 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-50 p-4 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none">
+                <p class="text-sm font-semibold text-slate-900 dark:text-white mb-1">Notifications</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400">You're all caught up! 🎉</p>
+              </div>
+            </div>
 
             {/* Profile Dropdown */}
             <div class="relative">

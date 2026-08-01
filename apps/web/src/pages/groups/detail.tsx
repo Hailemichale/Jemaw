@@ -456,25 +456,25 @@ export default function GroupDetailPage() {
                       <span class="text-sm font-semibold text-slate-700 dark:text-slate-300">Add Expense</span>
                     </button>
 
-                    <button 
-                      onClick={() => alert("Events feature coming in V3!")}
+                    <A 
+                      href={`/groups/${group()?.id}/events`}
                       class="flex flex-col items-center justify-center p-4 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md rounded-2xl border border-slate-200/50 dark:border-slate-800/50 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:border-rose-200 dark:hover:border-rose-800 transition-all group shadow-sm"
                     >
                       <div class="w-12 h-12 bg-rose-100 dark:bg-rose-900/50 text-rose-600 dark:text-rose-400 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                         <CalendarIcon size={24} />
                       </div>
                       <span class="text-sm font-semibold text-slate-700 dark:text-slate-300">Plan Event</span>
-                    </button>
+                    </A>
 
-                    <button 
-                      onClick={() => alert("Shared files coming in V3!")}
+                    <A 
+                      href={`/groups/${group()?.id}/files`}
                       class="flex flex-col items-center justify-center p-4 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md rounded-2xl border border-slate-200/50 dark:border-slate-800/50 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:border-purple-200 dark:hover:border-purple-800 transition-all group shadow-sm"
                     >
                       <div class="w-12 h-12 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                         <FileText size={24} />
                       </div>
                       <span class="text-sm font-semibold text-slate-700 dark:text-slate-300">Shared Files</span>
-                    </button>
+                    </A>
                   </div>
 
                   {/* Activity Feed */}

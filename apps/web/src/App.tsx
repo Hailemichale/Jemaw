@@ -14,6 +14,7 @@ const GroupDetailPage = lazy(() => import('./pages/groups/detail'));
 const GroupChatPage = lazy(() => import('./pages/groups/chat'));
 const GroupFilesPage = lazy(() => import('./pages/groups/files'));
 const GroupCallPage = lazy(() => import('./pages/groups/call'));
+const GroupEventsPage = lazy(() => import('./pages/groups/events'));
 
 export default function App() {
   return (
@@ -28,6 +29,7 @@ export default function App() {
         <Route path="/groups/:id/chat" component={GroupChatPage} />
         <Route path="/groups/:id/files" component={GroupFilesPage} />
         <Route path="/groups/:id/call" component={GroupCallPage} />
+        <Route path="/groups/:id/events" component={GroupEventsPage} />
         <Route path="/calendar" component={CalendarPage} />
         <Route path="/settings" component={SettingsPage} />
       </Route>
