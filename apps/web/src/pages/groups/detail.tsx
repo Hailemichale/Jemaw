@@ -28,6 +28,66 @@ export default function GroupDetailPage() {
 
   // Feed state
   const [feed, setFeed] = createSignal<any[]>([]);
+  const [expenses, setExpenses] = createSignal<any[]>([]);
+
+  // Compute expense splits
+  const expenseSummary = () => {
+    const members = group()?.group_members || [];
+    const exps = expenses();
+    if (members.length === 0 || exps.length === 0) return null;
+
+    const total = exps.reduce((sum: number, e: any) => sum + (e.amount || 0), 0);
+    const perPerson = total / members.length;
+
+    // Calculate net balance per user: positive = overpaid (is owed), negative = underpaid (owes)
+    const balances: Record<string, number> = {};
+    const nameMap: Record<string, string> = {};
+    members.forEach((m: any) => {
+      balances[m.user_id] = 0;
+      nameMap[m.user_id] = m.full_name || `User ${m.user_id?.substring(0, 4)}`;
+    });
+
+    exps.forEach((e: any) => {
+      if (balances[e.paid_by] !== undefined) {
+        balances[e.paid_by] += e.amount || 0;
+      }
+    });
+
+    // Net balance = what they paid - their fair share
+    Object.keys(balances).forEach(uid => {
+      balances[uid] = balances[uid] - perPerson;
+    });
+
+    // Simplify debts: people who owe pay people who are owed
+    const debtors = Object.entries(balances)
+      .filter(([, b]) => b < -0.01)
+      .map(([uid, b]) => ({ uid, amount: -b }))
+      .sort((a, b) => b.amount - a.amount);
+
+    const creditors = Object.entries(balances)
+      .filter(([, b]) => b > 0.01)
+      .map(([uid, b]) => ({ uid, amount: b }))
+      .sort((a, b) => b.amount - a.amount);
+
+    const settlements: { from: string; to: string; amount: number }[] = [];
+    let di = 0, ci = 0;
+    while (di < debtors.length && ci < creditors.length) {
+      const transfer = Math.min(debtors[di].amount, creditors[ci].amount);
+      if (transfer > 0.01) {
+        settlements.push({
+          from: nameMap[debtors[di].uid],
+          to: nameMap[creditors[ci].uid],
+          amount: Math.round(transfer * 100) / 100
+        });
+      }
+      debtors[di].amount -= transfer;
+      creditors[ci].amount -= transfer;
+      if (debtors[di].amount < 0.01) di++;
+      if (creditors[ci].amount < 0.01) ci++;
+    }
+
+    return { total, perPerson, settlements, memberCount: members.length };
+  };
 
   const fetchFeed = async () => {
     // Fetch expenses
@@ -44,6 +104,7 @@ export default function GroupDetailPage() {
 
     const rawExpenses = expensesData || [];
     const rawActivities = activitiesData || [];
+    setExpenses(rawExpenses);
 
     // Standardize to a common timeline format
     const timeline = [
@@ -565,6 +626,54 @@ export default function GroupDetailPage() {
                       <Users size={16} /> Invite Members
                     </button>
                   </div>
+
+                  {/* Expense Summary Card */}
+                  <Show when={expenseSummary()}>
+                    <div class="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md rounded-3xl border border-slate-200/50 dark:border-slate-800/50 p-6 sm:p-8">
+                      <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                        <DollarSign size={20} class="text-emerald-500" /> Expense Split
+                      </h3>
+
+                      {/* Totals */}
+                      <div class="grid grid-cols-2 gap-3 mb-5">
+                        <div class="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-3 text-center">
+                          <p class="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 tracking-wider">Total</p>
+                          <p class="text-lg font-black text-emerald-700 dark:text-emerald-300">${expenseSummary()!.total.toFixed(2)}</p>
+                        </div>
+                        <div class="bg-indigo-50 dark:bg-indigo-900/20 rounded-xl p-3 text-center">
+                          <p class="text-[10px] uppercase font-bold text-indigo-600 dark:text-indigo-400 tracking-wider">Per Person</p>
+                          <p class="text-lg font-black text-indigo-700 dark:text-indigo-300">${expenseSummary()!.perPerson.toFixed(2)}</p>
+                        </div>
+                      </div>
+
+                      {/* Who Owes Whom */}
+                      <Show when={expenseSummary()!.settlements.length > 0} fallback={
+                        <div class="text-center py-4 text-sm text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
+                          ✅ Everyone is settled up!
+                        </div>
+                      }>
+                        <div class="space-y-2">
+                          <p class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Who Owes Whom</p>
+                          <For each={expenseSummary()!.settlements}>
+                            {(s) => (
+                              <div class="flex items-center justify-between bg-rose-50 dark:bg-rose-900/15 border border-rose-200/50 dark:border-rose-800/40 rounded-xl px-4 py-3">
+                                <div class="flex items-center gap-2 text-sm">
+                                  <span class="font-bold text-rose-700 dark:text-rose-400">{s.from}</span>
+                                  <span class="text-slate-400">→</span>
+                                  <span class="font-bold text-emerald-700 dark:text-emerald-400">{s.to}</span>
+                                </div>
+                                <span class="font-black text-sm text-slate-900 dark:text-white">${s.amount.toFixed(2)}</span>
+                              </div>
+                            )}
+                          </For>
+                        </div>
+                      </Show>
+
+                      <p class="text-[10px] text-slate-400 dark:text-slate-500 mt-3 text-center">
+                        Split equally among {expenseSummary()!.memberCount} members
+                      </p>
+                    </div>
+                  </Show>
                 </div>
 
               </div>
