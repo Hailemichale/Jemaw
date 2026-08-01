@@ -65,6 +65,9 @@ export default function GroupChat() {
   const [isSummarizing, setIsSummarizing] = createSignal(false);
   const [summaryResult, setSummaryResult] = createSignal<string | null>(null);
 
+  // Latecomer Alert State
+  const [latecomerAlert, setLatecomerAlert] = createSignal<{ name: string, roast: string, avatar: string } | null>(null);
+
   // Cinema Mode State
   const [isCinemaMode, setIsCinemaMode] = createSignal(false);
   let jitsiContainer: HTMLDivElement | undefined;
@@ -155,6 +158,24 @@ export default function GroupChat() {
             filter: `group_id=eq.${params.id}`
           },
           (payload) => {
+            if (payload.new.content?.startsWith('🚨 **[LAST TO ARRIVE ALERT:')) {
+              // Parse the alert to show popup
+              try {
+                const nameMatch = payload.new.content.match(/ALERT:\s(.*?)]/);
+                const name = nameMatch ? nameMatch[1] : 'Someone';
+                const parts = payload.new.content.split('\n\n');
+                const roast = parts[1] || 'Late as usual!';
+                const avatarPart = parts[2] || '';
+                const avatarMatch = avatarPart.match(/!\[Avatar\]\((.*?)\)/);
+                const avatar = avatarMatch ? avatarMatch[1] : 'https://i.pravatar.cc/150?u=late';
+                
+                setLatecomerAlert({ name, roast, avatar });
+                
+                // Auto close popup after 8 seconds
+                setTimeout(() => setLatecomerAlert(null), 8000);
+              } catch (e) { console.error(e); }
+            }
+
             if (payload.new.user_id === currentUserId()) return;
             setMessages((prev) => [...prev, payload.new]);
             scrollToBottom();
@@ -603,6 +624,51 @@ export default function GroupChat() {
         {/* Overlay to ensure text readability if needed */}
         <div class="absolute inset-0 bg-black/5 dark:bg-black/20"></div>
       </div>
+
+      {/* Latecomer Alert Modal */}
+      <Show when={latecomerAlert()}>
+        <div class="absolute inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div class="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2rem] shadow-2xl p-8 animate-in zoom-in-95 duration-300 relative border border-slate-200 dark:border-slate-800 text-center">
+            
+            {/* Pulsing Alert Icon */}
+            <div class="absolute -top-6 left-1/2 -translate-x-1/2">
+              <div class="relative">
+                <div class="absolute inset-0 bg-rose-500 rounded-full animate-ping opacity-50"></div>
+                <div class="w-12 h-12 bg-rose-500 text-white rounded-full flex items-center justify-center shadow-lg relative z-10 text-xl">
+                  🚨
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-8 mb-6 relative inline-block">
+              <div class="w-24 h-24 rounded-full overflow-hidden border-4 border-indigo-100 dark:border-indigo-900 mx-auto shadow-inner">
+                <img src={latecomerAlert()?.avatar} alt={latecomerAlert()?.name} class="w-full h-full object-cover" />
+              </div>
+              <div class="absolute -bottom-3 -right-3 text-4xl animate-bounce">🐌</div>
+            </div>
+
+            <h2 class="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-wider mb-2">
+              {latecomerAlert()?.name} IS HERE!
+            </h2>
+            <p class="text-sm font-semibold text-rose-500 mb-6 uppercase tracking-widest">Last to arrive</p>
+
+            <div class="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-6 relative">
+              <div class="absolute -top-3 left-4 text-3xl text-indigo-300 dark:text-indigo-700/50">"</div>
+              <p class="text-slate-700 dark:text-slate-300 text-lg italic font-medium leading-relaxed relative z-10">
+                {latecomerAlert()?.roast}
+              </p>
+              <div class="absolute -bottom-5 right-4 text-3xl text-indigo-300 dark:text-indigo-700/50">"</div>
+            </div>
+
+            <button 
+              onClick={() => setLatecomerAlert(null)}
+              class="mt-8 w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-md transition-transform active:scale-95 text-sm tracking-wide"
+            >
+              DISMISS
+            </button>
+          </div>
+        </div>
+      </Show>
 
       {/* Header */}
       <div class="h-16 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between px-6 shrink-0 relative z-20">
