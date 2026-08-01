@@ -37,6 +37,7 @@ jobs:
 
       - name: Update Android SDK Version to 35
         run: |
+          sed -i 's/minSdkVersion = 22/minSdkVersion = 23/g' apps/web/android/variables.gradle
           sed -i 's/compileSdkVersion = 34/compileSdkVersion = 35/g' apps/web/android/variables.gradle
           sed -i 's/targetSdkVersion = 34/targetSdkVersion = 35/g' apps/web/android/variables.gradle
 
