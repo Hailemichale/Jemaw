@@ -1,7 +1,7 @@
 import { createSignal, createEffect, onCleanup, For, Show } from 'solid-js';
 import { useParams, useNavigate, A } from '@solidjs/router';
 import { supabase } from '../../lib/supabase';
-import { ArrowLeft, Send, Settings, Image as ImageIcon, X } from 'lucide-solid';
+import { ArrowLeft, Send, Settings, Image as ImageIcon, X, Pencil, Trash2, CornerDownLeft } from 'lucide-solid';
 
 const renderMessageContent = (content: string) => {
   if (!content) return '';
@@ -48,6 +48,12 @@ export default function GroupChat() {
   const [isCinemaMode, setIsCinemaMode] = createSignal(false);
   let jitsiContainer: HTMLDivElement | undefined;
   let api: any = null;
+
+  // Edit / Delete state
+  const [editingMessageId, setEditingMessageId] = createSignal<string | null>(null);
+  const [editingContent, setEditingContent] = createSignal('');
+  const [contextMenuMsgId, setContextMenuMsgId] = createSignal<string | null>(null);
+  const [contextMenuPos, setContextMenuPos] = createSignal({ x: 0, y: 0 });
 
   const PRESET_WALLPAPERS = [
     { name: 'Cinematic Rain', url: 'https://images.unsplash.com/photo-1515694346937-94d85e41e6f0?w=1920&q=80' },
@@ -116,7 +122,7 @@ export default function GroupChat() {
         scrollToBottom();
       }
 
-      // Subscribe to real-time new messages
+      // Subscribe to real-time messages (INSERT, UPDATE, DELETE)
       const channel = supabase
         .channel(`public:messages:group_id=eq.${params.id}`)
         .on(
@@ -128,11 +134,33 @@ export default function GroupChat() {
             filter: `group_id=eq.${params.id}`
           },
           (payload) => {
-            // Ignore messages from ourselves to prevent duplicates with optimistic UI
             if (payload.new.user_id === currentUserId()) return;
-            
             setMessages((prev) => [...prev, payload.new]);
             scrollToBottom();
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'messages',
+            filter: `group_id=eq.${params.id}`
+          },
+          (payload) => {
+            setMessages((prev) => prev.map(m => m.id === payload.new.id ? { ...m, ...payload.new } : m));
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'DELETE',
+            schema: 'public',
+            table: 'messages',
+            filter: `group_id=eq.${params.id}`
+          },
+          (payload) => {
+            setMessages((prev) => prev.map(m => m.id === payload.old.id ? { ...m, content: null, is_deleted: true } : m));
           }
         )
         .subscribe();
@@ -233,10 +261,52 @@ export default function GroupChat() {
 
     if (error) {
       console.error("Error sending message:", error);
-      alert("Failed to send message: " + error.message);
-      // Remove temp message on failure
       setMessages((prev) => prev.filter(m => m.id !== tempMessage.id));
     }
+  };
+
+  // Close context menu on any click
+  const handleGlobalClick = () => setContextMenuMsgId(null);
+  createEffect(() => {
+    document.addEventListener('click', handleGlobalClick);
+    onCleanup(() => document.removeEventListener('click', handleGlobalClick));
+  });
+
+  const openContextMenu = (e: MouseEvent, msgId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenuPos({ x: e.clientX, y: e.clientY });
+    setContextMenuMsgId(msgId);
+  };
+
+  const startEditing = (msg: any) => {
+    setEditingMessageId(msg.id);
+    setEditingContent(msg.content);
+    setContextMenuMsgId(null);
+  };
+
+  const cancelEditing = () => {
+    setEditingMessageId(null);
+    setEditingContent('');
+  };
+
+  const saveEdit = async () => {
+    const msgId = editingMessageId();
+    const content = editingContent().trim();
+    if (!msgId || !content) return;
+
+    // Optimistic update
+    setMessages((prev) => prev.map(m => m.id === msgId ? { ...m, content, is_edited: true } : m));
+    cancelEditing();
+
+    await supabase.from('messages').update({ content, is_edited: true }).eq('id', msgId);
+  };
+
+  const deleteMessage = async (msgId: string) => {
+    setContextMenuMsgId(null);
+    // Optimistic update — mark as deleted
+    setMessages((prev) => prev.map(m => m.id === msgId ? { ...m, content: null, is_deleted: true } : m));
+    await supabase.from('messages').update({ content: '🚫 This message was deleted', is_deleted: true }).eq('id', msgId);
   };
 
   const handleWallpaperUpload = (e: any) => {
@@ -517,6 +587,8 @@ export default function GroupChat() {
         <For each={messages()}>
           {(msg) => {
             const isMe = msg.user_id === currentUserId();
+            const isDeleted = () => msg.is_deleted;
+            const isEdited = () => msg.is_edited && !msg.is_deleted;
             return (
               <div class={`flex w-full animate-in slide-in-from-bottom-2 fade-in duration-300 ${isMe ? 'justify-end' : 'justify-start'}`}>
                 <div class={`max-w-[75%] sm:max-w-[60%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
@@ -536,22 +608,77 @@ export default function GroupChat() {
                   </Show>
 
                   {/* Message Bubble */}
-                  <div class={`px-4 py-2.5 rounded-2xl shadow-sm backdrop-blur-md ${
-                    isMe 
-                      ? 'bg-indigo-600/90 text-white rounded-br-sm' 
-                      : 'bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white border border-slate-200/50 dark:border-slate-700/50 rounded-bl-sm'
-                  }`}>
-                    <Show when={msg.content === "started Cinema Mode - Click here to join"} fallback={
-                      <div class="text-[15px] leading-relaxed break-words" innerHTML={renderMessageContent(msg.content)}></div>
-                    }>
-                      <div class="mt-1 p-4 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-xl flex flex-col items-center justify-center gap-3">
-                        <p class="font-bold text-rose-600 dark:text-rose-400">🍿 Cinema Mode is active!</p>
-                        <button onClick={() => setIsCinemaMode(true)} class="px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white rounded-lg font-semibold shadow-sm transition-transform hover:scale-105">
-                          Join Cinema
+                  <Show when={editingMessageId() === msg.id} fallback={
+                    <div 
+                      class={`px-4 py-2.5 rounded-2xl shadow-sm backdrop-blur-md relative group/msg ${
+                        isDeleted()
+                          ? 'bg-slate-200/70 dark:bg-slate-800/70 italic'
+                          : isMe 
+                            ? 'bg-indigo-600/90 text-white rounded-br-sm' 
+                            : 'bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white border border-slate-200/50 dark:border-slate-700/50 rounded-bl-sm'
+                      }`}
+                      onContextMenu={(e: MouseEvent) => isMe && !isDeleted() ? openContextMenu(e, msg.id) : undefined}
+                      onClick={(e: MouseEvent) => {
+                        if (isMe && !isDeleted() && e.detail === 2) {
+                          e.preventDefault();
+                          startEditing(msg);
+                        }
+                      }}
+                    >
+                      <Show when={isDeleted()} fallback={
+                        <>
+                          <Show when={msg.content === "started Cinema Mode - Click here to join"} fallback={
+                            <div class="text-[15px] leading-relaxed break-words" innerHTML={renderMessageContent(msg.content)}></div>
+                          }>
+                            <div class="mt-1 p-4 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-xl flex flex-col items-center justify-center gap-3">
+                              <p class="font-bold text-rose-600 dark:text-rose-400">🍿 Cinema Mode is active!</p>
+                              <button onClick={() => setIsCinemaMode(true)} class="px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white rounded-lg font-semibold shadow-sm transition-transform hover:scale-105">
+                                Join Cinema
+                              </button>
+                            </div>
+                          </Show>
+                          <Show when={isEdited()}>
+                            <span class={`text-[9px] ${isMe ? 'text-indigo-200' : 'text-slate-400'} ml-1`}>(edited)</span>
+                          </Show>
+                        </>
+                      }>
+                        <div class={`flex items-center gap-1.5 text-[13px] ${isMe ? 'text-indigo-200' : 'text-slate-400 dark:text-slate-500'}`}>
+                          <Trash2 size={12} /> <span>This message was deleted</span>
+                        </div>
+                      </Show>
+
+                      {/* Context menu trigger for own messages (3-dot on hover) */}
+                      <Show when={isMe && !isDeleted()}>
+                        <button 
+                          class="absolute -left-8 top-1/2 -translate-y-1/2 opacity-0 group-hover/msg:opacity-100 transition-opacity p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-full hover:bg-white/50 dark:hover:bg-slate-800/50"
+                          onClick={(e: MouseEvent) => { e.stopPropagation(); openContextMenu(e, msg.id); }}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
                         </button>
-                      </div>
-                    </Show>
-                  </div>
+                      </Show>
+                    </div>
+                  }>
+                    {/* Inline Edit Mode */}
+                    <div class="flex items-center gap-2 w-full">
+                      <input
+                        type="text"
+                        value={editingContent()}
+                        onInput={(e) => setEditingContent(e.currentTarget.value)}
+                        onKeyDown={(e: KeyboardEvent) => {
+                          if (e.key === 'Enter') saveEdit();
+                          if (e.key === 'Escape') cancelEditing();
+                        }}
+                        class="flex-1 bg-white dark:bg-slate-800 border-2 border-indigo-500 rounded-xl px-4 py-2 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                        autofocus
+                      />
+                      <button onClick={saveEdit} class="p-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 transition-colors" title="Save">
+                        <CornerDownLeft size={16} />
+                      </button>
+                      <button onClick={cancelEditing} class="p-2 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors" title="Cancel">
+                        <X size={16} />
+                      </button>
+                    </div>
+                  </Show>
                   
                   {/* Timestamp */}
                   <span class={`text-[9px] text-slate-500 dark:text-slate-400 mt-1 drop-shadow-sm font-medium ${isMe ? 'mr-1' : 'ml-1'}`}>
@@ -562,6 +689,27 @@ export default function GroupChat() {
             );
           }}
         </For>
+
+        {/* Floating Context Menu */}
+        <Show when={contextMenuMsgId()}>
+          <div 
+            class="fixed z-[200] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl overflow-hidden animate-in zoom-in-95 fade-in duration-150"
+            style={`left: ${contextMenuPos().x}px; top: ${contextMenuPos().y}px;`}
+          >
+            <button 
+              onClick={() => { const msg = messages().find(m => m.id === contextMenuMsgId()); if (msg) startEditing(msg); }}
+              class="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
+            >
+              <Pencil size={14} /> Edit
+            </button>
+            <button 
+              onClick={() => { const id = contextMenuMsgId(); if (id) deleteMessage(id); }}
+              class="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors"
+            >
+              <Trash2 size={14} /> Delete
+            </button>
+          </div>
+        </Show>
       </div>
 
       {/* Input Area */}
