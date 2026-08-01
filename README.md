@@ -1,7 +1,7 @@
 <div align="center">
-  <img src="https://images.unsplash.com/photo-1515694346937-94d85e41e6f0?w=1200&q=80" alt="Jemaw Banner" width="100%" style="border-radius: 12px; margin-bottom: 20px; max-height: 250px; object-fit: cover;" />
+  <img src="apps/web/public/jemaw_logo_final_1785499200444.jpg" alt="Jemaw Banner" width="100%" style="border-radius: 12px; margin-bottom: 20px; max-height: 250px; object-fit: contain;" />
 
-  # 🌟 Jemaw
+  # <img src="apps/web/public/jemaw_logo_final_1785499200444.jpg" width="40" height="40" style="border-radius: 8px; vertical-align: text-bottom;" /> Jemaw
 
   **Bring your groups together.** <br>
   *Jemaw makes it effortless to coordinate meetups, share memories, track expenses, and stay connected with your favorite people—all powered by intelligent AI assistance and a stunning glassmorphic UI.*
