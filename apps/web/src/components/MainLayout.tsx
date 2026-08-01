@@ -240,11 +240,17 @@ export default function MainLayout(props: MainLayoutProps) {
                 <a href="https://github.com/Hailemichale/Jemaw/releases/latest" target="_blank" class="flex items-center px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                   <span class="mr-3 text-lg">🪟</span> Windows (.exe)
                 </a>
-                <a href="https://github.com/Hailemichale/Jemaw/releases/latest" target="_blank" class="flex items-center px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                   <span class="mr-3 text-lg">🤖</span> Android (.apk)
                 </a>
                 <a href="https://github.com/Hailemichale/Jemaw/releases/latest" target="_blank" class="flex items-center px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                   <span class="mr-3 text-lg">🍎</span> Mac (.dmg)
+                </a>
+                <a href="https://github.com/Hailemichale/Jemaw/releases/latest/download/Jemaw-Setup.msi" class="w-full flex items-center gap-3 px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors text-left text-sm font-medium">
+                  <Monitor size={16} class="text-indigo-500" />
+                  <div class="flex-1">
+                    <span class="block text-slate-900 dark:text-white">Windows PC</span>
+                    <span class="block text-xs text-slate-500">.msi Installer</span>
+                  </div>
                 </a>
                 <a href="https://github.com/Hailemichale/Jemaw/releases/latest" target="_blank" class="flex items-center px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                   <span class="mr-3 text-lg">📱</span> iPhone (.ipa)
