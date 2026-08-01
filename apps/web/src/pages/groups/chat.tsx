@@ -1,7 +1,8 @@
 import { createSignal, createEffect, onCleanup, For, Show } from 'solid-js';
 import { useParams, useNavigate, A } from '@solidjs/router';
 import { supabase } from '../../lib/supabase';
-import { ArrowLeft, Send, Settings, Image as ImageIcon, X, Pencil, Trash2, CornerDownLeft } from 'lucide-solid';
+import { ArrowLeft, Send, Settings, Image as ImageIcon, X, Pencil, Trash2, CornerDownLeft, Paperclip, Heart, Smile, Mic, Square, FileText } from 'lucide-solid';
+import 'emoji-picker-element';
 
 const renderMessageContent = (content: string) => {
   if (!content) return '';
@@ -34,6 +35,29 @@ export default function GroupChat() {
   const [currentUserId, setCurrentUserId] = createSignal('');
   const [group, setGroup] = createSignal<any>(null);
   const [profileMap, setProfileMap] = createSignal<Record<string, { full_name: string, avatar_url: string | null }>>({});
+  
+  // Rich Chat Input State
+  const [showEmojiPicker, setShowEmojiPicker] = createSignal(false);
+  const [isRecording, setIsRecording] = createSignal(false);
+  const [recordingTime, setRecordingTime] = createSignal(0);
+  
+  let emojiPickerRef: any;
+  let fileInputRef: HTMLInputElement | undefined;
+  
+  let mediaRecorder: MediaRecorder | null = null;
+  let audioChunks: Blob[] = [];
+  let recordingInterval: any;
+  
+  createEffect(() => {
+    if (emojiPickerRef) {
+      const handleEmoji = (e: any) => {
+        setNewMessage(prev => prev + e.detail.unicode);
+        setShowEmojiPicker(false);
+      };
+      emojiPickerRef.addEventListener('emoji-click', handleEmoji);
+      onCleanup(() => emojiPickerRef.removeEventListener('emoji-click', handleEmoji));
+    }
+  });
   
   // Settings / Wallpaper state
   const [showSettings, setShowSettings] = createSignal(false);
@@ -255,12 +279,8 @@ export default function GroupChat() {
     }, 100);
   };
 
-  const sendMessage = async (e: Event) => {
-    e.preventDefault();
-    if (!newMessage().trim()) return;
-
-    const content = newMessage().trim();
-    setNewMessage(''); // clear input
+  const sendMessageText = async (content: string, type: string = 'text') => {
+    if (!content.trim()) return;
 
     // Optimistically add to UI immediately
     const tempMessage = {
@@ -268,6 +288,7 @@ export default function GroupChat() {
       group_id: params.id,
       user_id: currentUserId(),
       content: content,
+      type: type,
       created_at: new Date().toISOString()
     };
     
@@ -279,7 +300,8 @@ export default function GroupChat() {
       {
         group_id: params.id,
         user_id: currentUserId(),
-        content: content
+        content: content,
+        type: type
       }
     ]);
 
@@ -287,6 +309,97 @@ export default function GroupChat() {
       console.error("Error sending message:", error);
       setMessages((prev) => prev.filter(m => m.id !== tempMessage.id));
     }
+  };
+
+  const sendMessage = async (e: Event) => {
+    e.preventDefault();
+    if (newMessage().trim()) {
+      await sendMessageText(newMessage(), 'text');
+      setNewMessage('');
+    }
+  };
+
+  const sendHeart = () => {
+    sendMessageText('❤️', 'text');
+  };
+
+  const handleFileUpload = async (e: Event) => {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+    
+    // Using jemaw-files bucket
+    const { data, error } = await supabase.storage.from('jemaw-files').upload(fileName, file);
+    if (data) {
+      const { data: urlData } = supabase.storage.from('jemaw-files').getPublicUrl(fileName);
+      if (file.type.startsWith('image/')) {
+        sendMessageText(`![${file.name}](${urlData.publicUrl})`, 'text');
+      } else {
+        sendMessageText(`[${file.name}](${urlData.publicUrl})`, 'file');
+      }
+    } else {
+      alert("Error uploading file: " + error?.message);
+    }
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      audioChunks = [];
+      
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunks.push(e.data);
+      };
+      
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        const fileName = `audio-${Date.now()}-${currentUserId()}.webm`;
+        
+        const { data, error } = await supabase.storage.from('jemaw-files').upload(fileName, audioBlob);
+        if (data) {
+          const { data: urlData } = supabase.storage.from('jemaw-files').getPublicUrl(fileName);
+          sendMessageText(urlData.publicUrl, 'voice');
+        } else {
+          alert("Error uploading audio: " + error?.message);
+        }
+        stream.getTracks().forEach(track => track.stop());
+      };
+      
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingTime(0);
+      recordingInterval = setInterval(() => setRecordingTime(p => p + 1), 1000);
+    } catch (e) {
+      alert("Microphone access denied or not available.");
+    }
+  };
+
+  const cancelRecording = () => {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.onstop = () => {
+        mediaRecorder?.stream.getTracks().forEach(t => t.stop());
+      };
+      mediaRecorder.stop();
+    }
+    setIsRecording(false);
+    clearInterval(recordingInterval);
+  };
+
+  const stopAndSendRecording = () => {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+    }
+    setIsRecording(false);
+    clearInterval(recordingInterval);
+  };
+
+  const formatRecordingTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   // Close context menu on any click
@@ -651,15 +764,41 @@ export default function GroupChat() {
                     >
                       <Show when={isDeleted()} fallback={
                         <>
-                          <Show when={msg.content === "started Cinema Mode - Click here to join"} fallback={
-                            <div class="text-[15px] leading-relaxed break-words" innerHTML={renderMessageContent(msg.content)}></div>
-                          }>
-                            <div class="mt-1 p-4 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-xl flex flex-col items-center justify-center gap-3">
-                              <p class="font-bold text-rose-600 dark:text-rose-400">🍿 Cinema Mode is active!</p>
-                              <button onClick={() => setIsCinemaMode(true)} class="px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white rounded-lg font-semibold shadow-sm transition-transform hover:scale-105">
-                                Join Cinema
-                              </button>
+                          <Show when={msg.type === 'voice'}>
+                            <div class="mt-2 mb-1 flex items-center justify-center">
+                              <audio controls src={msg.content} class="h-10 max-w-[200px] rounded-full custom-audio-player" />
                             </div>
+                          </Show>
+                          
+                          <Show when={msg.type === 'file'}>
+                            <div class="mt-2 mb-1">
+                              {/* Parse our custom format [filename](url) */}
+                              <a 
+                                href={msg.content.match(/\((.*?)\)/)?.[1] || msg.content} 
+                                target="_blank" 
+                                class="flex items-center gap-3 p-3 bg-black/5 dark:bg-white/10 rounded-xl hover:bg-black/10 dark:hover:bg-white/20 transition-colors border border-black/5 dark:border-white/5"
+                              >
+                                <div class="p-2 bg-indigo-100 dark:bg-indigo-900/50 rounded-lg text-indigo-600 dark:text-indigo-400">
+                                  <FileText size={20} />
+                                </div>
+                                <span class="text-sm font-medium underline underline-offset-2 break-all line-clamp-2">
+                                  {msg.content.match(/\[(.*?)\]/)?.[1] || 'Download Attachment'}
+                                </span>
+                              </a>
+                            </div>
+                          </Show>
+
+                          <Show when={!msg.type || msg.type === 'text'}>
+                            <Show when={msg.content === "started Cinema Mode - Click here to join"} fallback={
+                              <div class={`text-[15px] leading-relaxed break-words ${msg.content === '❤️' ? 'text-4xl' : ''}`} innerHTML={msg.content === '❤️' ? '❤️' : renderMessageContent(msg.content)}></div>
+                            }>
+                              <div class="mt-1 p-4 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-xl flex flex-col items-center justify-center gap-3">
+                                <p class="font-bold text-rose-600 dark:text-rose-400">🍿 Cinema Mode is active!</p>
+                                <button onClick={() => setIsCinemaMode(true)} class="px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white rounded-lg font-semibold shadow-sm transition-transform hover:scale-105">
+                                  Join Cinema
+                                </button>
+                              </div>
+                            </Show>
                           </Show>
                           <Show when={isEdited()}>
                             <span class={`text-[9px] ${isMe ? 'text-indigo-200' : 'text-slate-400'} ml-1`}>(edited)</span>
@@ -738,22 +877,97 @@ export default function GroupChat() {
 
       {/* Input Area */}
       <div class="relative z-10 flex-shrink-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-t border-slate-200/50 dark:border-slate-800/50 p-4">
-        <form onSubmit={sendMessage} class="max-w-5xl mx-auto flex gap-3">
+        <div class="max-w-5xl mx-auto flex gap-3 relative">
+          
+          <Show when={showEmojiPicker()}>
+            <div class="absolute bottom-16 right-0 z-50 shadow-2xl rounded-lg overflow-hidden animate-in fade-in slide-in-from-bottom-2">
+              <emoji-picker ref={emojiPickerRef} class="dark"></emoji-picker>
+            </div>
+          </Show>
+
+          {/* Hidden File Input */}
           <input 
-            type="text" 
-            placeholder="Type a message..."
-            value={newMessage()}
-            onInput={(e) => setNewMessage(e.currentTarget.value)}
-            class="flex-1 bg-slate-100 dark:bg-slate-800 border-none rounded-full px-6 py-3 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none placeholder:text-slate-500"
+            type="file" 
+            ref={fileInputRef} 
+            class="hidden" 
+            onChange={handleFileUpload} 
           />
-          <button 
-            type="submit"
-            disabled={!newMessage().trim()}
-            class="w-12 h-12 flex-shrink-0 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full flex items-center justify-center transition-colors disabled:opacity-50 disabled:hover:bg-indigo-600 shadow-md shadow-indigo-500/20"
-          >
-            <Send size={18} class="ml-1" />
-          </button>
-        </form>
+
+          <Show when={!isRecording()} fallback={
+            <div class="flex-1 bg-slate-100 dark:bg-slate-800 rounded-full px-6 py-3 flex items-center justify-between">
+              <div class="flex items-center gap-3 text-rose-500 animate-pulse">
+                <div class="w-3 h-3 rounded-full bg-rose-500"></div>
+                <span class="font-medium">{formatRecordingTime(recordingTime())}</span>
+              </div>
+              <div class="flex items-center gap-4">
+                <button onClick={cancelRecording} class="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 font-medium">
+                  Cancel
+                </button>
+                <button 
+                  onClick={stopAndSendRecording}
+                  class="bg-indigo-600 hover:bg-indigo-500 text-white rounded-full p-2 flex items-center justify-center transition-colors shadow-md shadow-indigo-500/20"
+                >
+                  <Send size={18} class="ml-1" />
+                </button>
+              </div>
+            </div>
+          }>
+            <form onSubmit={sendMessage} class="flex-1 flex gap-3 relative">
+              <div class="flex-1 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center px-4 relative transition-colors focus-within:ring-2 focus-within:ring-indigo-500/50">
+                {/* Paperclip Attachment */}
+                <button 
+                  type="button" 
+                  onClick={() => fileInputRef?.click()}
+                  class="p-2 text-slate-400 hover:text-indigo-500 transition-colors"
+                >
+                  <Paperclip size={20} />
+                </button>
+                
+                <input 
+                  type="text" 
+                  placeholder="Type a message..."
+                  value={newMessage()}
+                  onInput={(e) => setNewMessage(e.currentTarget.value)}
+                  class="flex-1 bg-transparent border-none px-2 py-3 text-sm text-slate-900 dark:text-white focus:ring-0 outline-none placeholder:text-slate-500"
+                />
+                
+                <div class="flex items-center gap-1 text-slate-400">
+                  <button 
+                    type="button" 
+                    onClick={sendHeart}
+                    class="p-2 hover:text-rose-500 transition-colors"
+                  >
+                    <Heart size={20} />
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setShowEmojiPicker(!showEmojiPicker())}
+                    class={`p-2 hover:text-indigo-500 transition-colors ${showEmojiPicker() ? 'text-indigo-500' : ''}`}
+                  >
+                    <Smile size={20} />
+                  </button>
+                </div>
+              </div>
+              
+              <Show when={newMessage().trim()} fallback={
+                <button 
+                  type="button"
+                  onClick={startRecording}
+                  class="w-12 h-12 flex-shrink-0 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full flex items-center justify-center transition-colors shadow-md shadow-indigo-500/20"
+                >
+                  <Mic size={20} />
+                </button>
+              }>
+                <button 
+                  type="submit"
+                  class="w-12 h-12 flex-shrink-0 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full flex items-center justify-center transition-colors shadow-md shadow-indigo-500/20"
+                >
+                  <Send size={18} class="ml-1" />
+                </button>
+              </Show>
+            </form>
+          </Show>
+        </div>
       </div>
 
       {/* AI Summary Modal */}
