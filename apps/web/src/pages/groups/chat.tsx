@@ -290,13 +290,16 @@ export default function GroupChat() {
   const sendMessageText = async (content: string, type: string = 'text') => {
     if (!content.trim()) return;
 
+    let finalContent = content;
+    if (type === 'voice') finalContent = `[VOICE_MSG]${content}`;
+    if (type === 'file') finalContent = `[FILE_MSG]${content}`;
+
     // Optimistically add to UI immediately
     const tempMessage = {
       id: 'temp-' + Date.now(),
       group_id: params.id,
       user_id: currentUserId(),
-      content: content,
-      type: type,
+      content: finalContent,
       created_at: new Date().toISOString()
     };
     
@@ -308,8 +311,7 @@ export default function GroupChat() {
       {
         group_id: params.id,
         user_id: currentUserId(),
-        content: content,
-        type: type
+        content: finalContent
       }
     ]);
 
@@ -772,17 +774,16 @@ export default function GroupChat() {
                     >
                       <Show when={isDeleted()} fallback={
                         <>
-                          <Show when={msg.type === 'voice'}>
+                          <Show when={msg.content?.startsWith('[VOICE_MSG]')}>
                             <div class="mt-2 mb-1 flex items-center justify-center">
-                              <audio controls src={msg.content} class="h-10 max-w-[200px] rounded-full custom-audio-player" />
+                              <audio controls src={msg.content.replace('[VOICE_MSG]', '')} class="h-10 max-w-[200px] rounded-full custom-audio-player" />
                             </div>
                           </Show>
                           
-                          <Show when={msg.type === 'file'}>
+                          <Show when={msg.content?.startsWith('[FILE_MSG]')}>
                             <div class="mt-2 mb-1">
-                              {/* Parse our custom format [filename](url) */}
                               <a 
-                                href={msg.content.match(/\((.*?)\)/)?.[1] || msg.content} 
+                                href={msg.content.match(/\((.*?)\)/)?.[1] || msg.content.replace('[FILE_MSG]', '')} 
                                 target="_blank" 
                                 class="flex items-center gap-3 p-3 bg-black/5 dark:bg-white/10 rounded-xl hover:bg-black/10 dark:hover:bg-white/20 transition-colors border border-black/5 dark:border-white/5"
                               >
@@ -796,7 +797,7 @@ export default function GroupChat() {
                             </div>
                           </Show>
 
-                          <Show when={!msg.type || msg.type === 'text'}>
+                          <Show when={!msg.content?.startsWith('[VOICE_MSG]') && !msg.content?.startsWith('[FILE_MSG]')}>
                             <Show when={msg.content === "started Cinema Mode - Click here to join"} fallback={
                               <div class={`text-[15px] leading-relaxed break-words ${msg.content === '❤️' ? 'text-4xl' : ''}`} innerHTML={msg.content === '❤️' ? '❤️' : renderMessageContent(msg.content)}></div>
                             }>
