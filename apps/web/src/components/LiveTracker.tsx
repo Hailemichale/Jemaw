@@ -243,25 +243,35 @@ export default function LiveTracker(props: LiveTrackerProps) {
           const { data: profile } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', lateComerId).single();
           if (profile) {
             const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-            const prompt = `Write a very short, funny, 1-sentence roast for a friend named "${profile.full_name}" who is the absolute LAST person to arrive at our group meetup. Be sarcastic but friendly. Do not use quotes.`;
+            let roast = `Everyone's waiting on you! Did you get lost on the way, or are you just naturally this slow?`;
             
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`, {
-              method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-            });
-            if (response.ok) {
-              const data = await response.json();
-              const roast = data.candidates[0].content.parts[0].text;
-              const avatarImage = profile.avatar_url ? `![Avatar](${profile.avatar_url})` : '🐌';
-              
-              await supabase.from('messages').insert({
-                group_id: props.groupId,
-                user_id: props.currentUserId,
-                content: `🚨 **[LAST TO ARRIVE ALERT]** 🚨\n\n${roast}\n\n${avatarImage}`
-              });
-              
-              alert(`Everyone has arrived except ${profile.full_name}! A roast has been sent to the group chat.`);
+            if (apiKey) {
+              try {
+                const prompt = `Write a very short, funny, 1-sentence roast for a friend named "${profile.full_name}" who is the absolute LAST person to arrive at our group meetup. Be sarcastic but friendly. Do not use quotes.`;
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`, {
+                  method: "POST", headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                });
+                if (response.ok) {
+                  const data = await response.json();
+                  if (data.candidates && data.candidates[0].content) {
+                    roast = data.candidates[0].content.parts[0].text;
+                  }
+                }
+              } catch (err) {
+                console.error("AI Roast generation failed, using fallback.", err);
+              }
             }
+            
+            const avatarImage = profile.avatar_url ? `![Avatar](${profile.avatar_url})` : '🐌';
+            
+            await supabase.from('messages').insert({
+              group_id: props.groupId,
+              user_id: props.currentUserId,
+              content: `🚨 **[LAST TO ARRIVE ALERT: ${profile.full_name}]** 🚨\n\n${roast}\n\n${avatarImage}`
+            });
+            
+            alert(`Everyone has arrived except ${profile.full_name}! A latecomer alert has been sent to the group chat.`);
           }
         }
       }
