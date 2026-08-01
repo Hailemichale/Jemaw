@@ -40,3 +40,12 @@ jobs:
         with:
           name: jemaw-windows-exe
           path: apps/web/src-tauri/target/release/bundle/msi/*.msi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: latest
+          name: Latest Release
+          files: apps/web/src-tauri/target/release/bundle/msi/*.msi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
