@@ -1,0 +1,297 @@
+import { createSignal, createEffect, onCleanup, Show, For, onMount } from 'solid-js';
+import { supabase } from '../lib/supabase';
+import { MapPin, Navigation, XCircle, CheckCircle, Navigation2 } from 'lucide-solid';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+interface LiveTrackerProps {
+  eventId: string;
+  groupId: string;
+  currentUserId: string;
+}
+
+export default function LiveTracker(props: LiveTrackerProps) {
+  const [isOptedIn, setIsOptedIn] = createSignal(false);
+  const [isArrived, setIsArrived] = createSignal(false);
+  const [locations, setLocations] = createSignal<any[]>([]);
+  const [profileMap, setProfileMap] = createSignal<Record<string, { full_name: string, avatar_url: string | null }>>({});
+  
+  let mapContainer: HTMLDivElement | undefined;
+  let map: L.Map | null = null;
+  let markers: Record<string, L.Marker> = {};
+  let watchId: number | null = null;
+  let channel: any = null;
+
+  // Load profiles for the group
+  createEffect(() => {
+    const fetchProfiles = async () => {
+      const { data: members } = await supabase.from('group_members').select('user_id').eq('group_id', props.groupId);
+      if (members) {
+        const userIds = members.map(m => m.user_id);
+        const { data: profiles } = await supabase.from('profiles').select('id, full_name, avatar_url').in('id', userIds);
+        const mapData = profiles?.reduce((acc: any, p: any) => ({ ...acc, [p.id]: { full_name: p.full_name, avatar_url: p.avatar_url } }), {}) || {};
+        setProfileMap(mapData);
+      }
+    };
+    fetchProfiles();
+  });
+
+  // Fetch initial locations and subscribe
+  createEffect(() => {
+    if (!isOptedIn()) return;
+
+    const fetchLocations = async () => {
+      const { data } = await supabase.from('event_locations').select('*').eq('event_id', props.eventId);
+      if (data) {
+        setLocations(data);
+        updateMapMarkers(data);
+        
+        // Check my own status
+        const myLoc = data.find(l => l.user_id === props.currentUserId);
+        if (myLoc && myLoc.is_arrived) {
+          setIsArrived(true);
+          stopTracking();
+        }
+      }
+    };
+
+    fetchLocations();
+
+    channel = supabase.channel(`event_locations_${props.eventId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'event_locations', filter: `event_id=eq.${props.eventId}` },
+        (payload) => {
+          setLocations((prev) => {
+            let next = [...prev];
+            const idx = next.findIndex(l => l.user_id === (payload.new as any).user_id);
+            if (payload.eventType === 'DELETE') {
+               next = next.filter(l => l.user_id !== (payload.old as any).user_id);
+            } else if (idx > -1) {
+               next[idx] = payload.new;
+            } else {
+               next.push(payload.new);
+            }
+            updateMapMarkers(next);
+            return next;
+          });
+        }
+      )
+      .subscribe();
+
+    onCleanup(() => {
+      if (channel) supabase.removeChannel(channel);
+    });
+  });
+
+  // Init Leaflet map
+  createEffect(() => {
+    if (isOptedIn() && mapContainer && !map) {
+      map = L.map(mapContainer).setView([0, 0], 2);
+      
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        subdomains: 'abcd',
+        maxZoom: 20
+      }).addTo(map);
+    }
+  });
+
+  const getCustomIcon = (userId: string) => {
+    const profile = profileMap()[userId];
+    const avatarUrl = profile?.avatar_url || `https://i.pravatar.cc/150?u=${userId}`;
+    
+    return L.divIcon({
+      className: 'custom-leaflet-icon',
+      html: `
+        <div style="
+          width: 40px; 
+          height: 40px; 
+          border-radius: 50%; 
+          border: 3px solid ${userId === props.currentUserId ? '#4f46e5' : '#10b981'};
+          overflow: hidden;
+          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+          background-color: white;
+          position: relative;
+        ">
+          <img src="${avatarUrl}" style="width: 100%; height: 100%; object-fit: cover;" />
+        </div>
+      `,
+      iconSize: [40, 40],
+      iconAnchor: [20, 20]
+    });
+  };
+
+  const updateMapMarkers = (locs: any[]) => {
+    if (!map) return;
+    
+    // Clear old markers that no longer exist
+    const userIds = locs.map(l => l.user_id);
+    Object.keys(markers).forEach(uid => {
+      if (!userIds.includes(uid) || locs.find(l => l.user_id === uid)?.is_arrived) {
+        map!.removeLayer(markers[uid]);
+        delete markers[uid];
+      }
+    });
+
+    const bounds = L.latLngBounds([]);
+    let hasValidPoints = false;
+
+    locs.forEach(loc => {
+      if (loc.is_arrived) return; // Don't show arrived people on map
+      
+      const { user_id, lat, lng } = loc;
+      bounds.extend([lat, lng]);
+      hasValidPoints = true;
+
+      if (markers[user_id]) {
+        markers[user_id].setLatLng([lat, lng]);
+      } else {
+        const marker = L.marker([lat, lng], { icon: getCustomIcon(user_id) }).addTo(map!);
+        const profile = profileMap()[user_id];
+        if (profile) {
+          marker.bindPopup(`<b>${profile.full_name}</b>`);
+        }
+        markers[user_id] = marker;
+      }
+    });
+
+    if (hasValidPoints && Object.keys(markers).length > 0) {
+      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+    }
+  };
+
+  const startTracking = () => {
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser');
+      return;
+    }
+    
+    setIsOptedIn(true);
+    
+    // Send first update immediately
+    navigator.geolocation.getCurrentPosition(updateLocation, (err) => {
+      alert("Please allow location access to use this feature.");
+      setIsOptedIn(false);
+    }, { enableHighAccuracy: true });
+
+    // Watch for updates
+    watchId = navigator.geolocation.watchPosition(updateLocation, console.error, {
+      enableHighAccuracy: true,
+      maximumAge: 10000,
+      timeout: 5000
+    });
+  };
+
+  const updateLocation = async (position: GeolocationPosition) => {
+    if (isArrived()) return;
+    const { latitude, longitude } = position.coords;
+    
+    await supabase.from('event_locations').upsert({
+      event_id: props.eventId,
+      user_id: props.currentUserId,
+      lat: latitude,
+      lng: longitude,
+      is_arrived: false,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'event_id,user_id' });
+  };
+
+  const markArrived = async () => {
+    setIsArrived(true);
+    stopTracking();
+    
+    // Keep them in DB as arrived, so others know they arrived, but remove their pin
+    await supabase.from('event_locations').upsert({
+      event_id: props.eventId,
+      user_id: props.currentUserId,
+      lat: 0,
+      lng: 0, // Zero out coordinates for privacy
+      is_arrived: true,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'event_id,user_id' });
+  };
+
+  const stopTracking = () => {
+    if (watchId !== null) {
+      navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+    }
+  };
+
+  onCleanup(() => {
+    stopTracking();
+  });
+
+  return (
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-lg mb-8">
+      <div class="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
+        <div>
+          <h3 class="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <Navigation2 size={20} class="text-indigo-500" />
+            Live Location Tracker
+          </h3>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            See who's on their way. Sharing stops automatically when you arrive.
+          </p>
+        </div>
+      </div>
+
+      <Show when={!isOptedIn() && !isArrived()}>
+        <div class="p-10 text-center flex flex-col items-center justify-center">
+          <div class="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-500 rounded-full flex items-center justify-center mb-4">
+            <MapPin size={32} />
+          </div>
+          <h4 class="text-lg font-semibold text-slate-900 dark:text-white mb-2">Share your live location</h4>
+          <p class="text-sm text-slate-500 dark:text-slate-400 mb-6 max-w-sm">
+            Help your group find you! Your location is only shared during the meeting day and stops when you arrive.
+          </p>
+          <button 
+            onClick={startTracking}
+            class="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-xl shadow-md transition-all active:scale-95 flex items-center gap-2"
+          >
+            <Navigation size={18} /> Share My Location
+          </button>
+        </div>
+      </Show>
+
+      <Show when={isOptedIn() && !isArrived()}>
+        <div class="relative w-full h-[400px]">
+          {/* Map Container */}
+          <div ref={mapContainer!} class="absolute inset-0 z-0"></div>
+          
+          {/* Overlay Controls */}
+          <div class="absolute bottom-4 left-0 right-0 z-[400] flex justify-center pointer-events-none px-4">
+             <div class="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-3 rounded-2xl shadow-xl pointer-events-auto border border-slate-200 dark:border-slate-800 flex items-center gap-4">
+                <div class="flex items-center gap-2">
+                  <span class="relative flex h-3 w-3">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-3 w-3 bg-indigo-500"></span>
+                  </span>
+                  <span class="text-sm font-medium text-slate-700 dark:text-slate-200">Sharing Location...</span>
+                </div>
+                <button 
+                  onClick={markArrived}
+                  class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-semibold rounded-xl shadow-sm transition-colors flex items-center gap-2"
+                >
+                  <CheckCircle size={16} /> I've Arrived!
+                </button>
+             </div>
+          </div>
+        </div>
+      </Show>
+      
+      <Show when={isArrived()}>
+        <div class="p-8 text-center bg-emerald-50 dark:bg-emerald-900/10">
+          <div class="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4">
+            <CheckCircle size={32} />
+          </div>
+          <h4 class="text-lg font-semibold text-emerald-700 dark:text-emerald-400">You've Arrived!</h4>
+          <p class="text-sm text-emerald-600/80 dark:text-emerald-500/80 mt-1">
+            Location sharing has been completely disabled.
+          </p>
+        </div>
+      </Show>
+    </div>
+  );
+}

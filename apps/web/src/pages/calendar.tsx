@@ -3,6 +3,7 @@ import MainLayout from '../components/MainLayout';
 import { ChevronLeft, ChevronRight, Plus, X, Calendar as CalendarIcon, List, Image as ImageIcon, MessageSquare, Loader2, Play, Megaphone } from 'lucide-solid';
 import { supabase } from '../lib/supabase';
 import { useNavigate } from '@solidjs/router';
+import LiveTracker from '../components/LiveTracker';
 
 export default function CalendarPage() {
   const navigate = useNavigate();
@@ -412,14 +413,25 @@ export default function CalendarPage() {
 
               <div class="flex-1 overflow-y-auto p-6 bg-slate-50/50 dark:bg-slate-950/50">
                 <Show when={isEventPast(selectedEvent().date)} fallback={
-                  <div class="flex flex-col items-center justify-center py-20 text-center">
+                  <div class="flex flex-col items-center justify-center py-10 text-center">
                     <div class="w-20 h-20 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-500 rounded-full flex items-center justify-center mb-4">
                       <CalendarIcon size={32} />
                     </div>
                     <h3 class="text-xl font-bold text-slate-900 dark:text-white mb-2">Upcoming Event!</h3>
-                    <p class="text-slate-500 dark:text-slate-400 max-w-sm">
+                    <p class="text-slate-500 dark:text-slate-400 max-w-sm mb-8">
                       Once this event passes, this space will turn into a Memory Box where you can upload photos and share thoughts from the day.
                     </p>
+                    
+                    {/* Live Tracker only active on the day of the event */}
+                    <Show when={new Date(selectedEvent().date).toDateString() === new Date().toDateString()}>
+                      <div class="w-full text-left">
+                        <LiveTracker 
+                          eventId={selectedEvent().id} 
+                          groupId={selectedEvent().group_id} 
+                          currentUserId={currentUserId()} 
+                        />
+                      </div>
+                    </Show>
                   </div>
                 }>
                   {/* Memory Box UI */}
