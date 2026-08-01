@@ -35,6 +35,11 @@ jobs:
         run: npx cap add android
         working-directory: apps/web
 
+      - name: Update Android SDK Version to 35
+        run: |
+          sed -i 's/compileSdkVersion = 34/compileSdkVersion = 35/g' apps/web/android/variables.gradle
+          sed -i 's/targetSdkVersion = 34/targetSdkVersion = 35/g' apps/web/android/variables.gradle
+
       - name: Build Android APK
         run: ./gradlew assembleDebug
         working-directory: apps/web/android
