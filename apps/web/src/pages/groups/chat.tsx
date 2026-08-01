@@ -163,6 +163,30 @@ export default function GroupChat() {
             setMessages((prev) => prev.map(m => m.id === payload.old.id ? { ...m, content: null, is_deleted: true } : m));
           }
         )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'profiles'
+          },
+          (payload) => {
+            const updatedProfile = payload.new;
+            setProfileMap((prev) => {
+              if (prev[updatedProfile.id]) {
+                return {
+                  ...prev,
+                  [updatedProfile.id]: {
+                    ...prev[updatedProfile.id],
+                    full_name: updatedProfile.full_name,
+                    avatar_url: updatedProfile.avatar_url
+                  }
+                };
+              }
+              return prev;
+            });
+          }
+        )
         .subscribe();
 
       onCleanup(() => {
