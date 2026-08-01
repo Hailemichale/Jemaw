@@ -30,7 +30,7 @@ jobs:
 
       - name: Build Tauri App
         run: npx tauri build
-        working-directory: apps/web
+        working-directory: apps/web/src-tauri
 
       - name: Upload Windows Executable
         uses: actions/upload-artifact@v4
