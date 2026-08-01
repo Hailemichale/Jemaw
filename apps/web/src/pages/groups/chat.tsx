@@ -888,7 +888,13 @@ export default function GroupChat() {
           
           <Show when={showEmojiPicker()}>
             <div class="absolute bottom-16 right-0 z-50 shadow-2xl rounded-lg overflow-hidden animate-in fade-in slide-in-from-bottom-2">
-              <emoji-picker ref={emojiPickerRef} class="dark"></emoji-picker>
+              <emoji-picker 
+                class="dark"
+                on:emoji-click={(e: any) => {
+                  setNewMessage(prev => prev + e.detail.unicode);
+                  setShowEmojiPicker(false);
+                }}
+              ></emoji-picker>
             </div>
           </Show>
 
