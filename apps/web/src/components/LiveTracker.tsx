@@ -161,6 +161,16 @@ export default function LiveTracker(props: LiveTrackerProps) {
     }
   };
 
+  const broadcastMessage = async (text: string) => {
+    try {
+      await supabase.from('messages').insert({
+        group_id: props.groupId,
+        user_id: props.currentUserId,
+        content: text
+      });
+    } catch(e) { console.error(e); }
+  };
+
   const startTracking = () => {
     if (!navigator.geolocation) {
       alert('Geolocation is not supported by your browser');
@@ -168,6 +178,7 @@ export default function LiveTracker(props: LiveTrackerProps) {
     }
     
     setIsOptedIn(true);
+    broadcastMessage(`📍 I've just started sharing my live location! See you soon.`);
     
     // Send first update immediately
     navigator.geolocation.getCurrentPosition(updateLocation, (err) => {
@@ -210,6 +221,51 @@ export default function LiveTracker(props: LiveTrackerProps) {
       is_arrived: true,
       updated_at: new Date().toISOString()
     }, { onConflict: 'event_id,user_id' });
+
+    await broadcastMessage(`✅ I've arrived at the meetup location!`);
+
+    // Check for latecomers
+    try {
+      const { data: members } = await supabase.from('group_members').select('user_id').eq('group_id', props.groupId);
+      if (!members || members.length < 2) return;
+      
+      const { data: arrived } = await supabase.from('event_locations')
+        .select('user_id')
+        .eq('event_id', props.eventId)
+        .eq('is_arrived', true);
+        
+      const arrivedIds = (arrived || []).map(a => a.user_id);
+      
+      // If exactly 1 person hasn't arrived
+      if (arrivedIds.length === members.length - 1) {
+        const lateComerId = members.find(m => !arrivedIds.includes(m.user_id))?.user_id;
+        if (lateComerId) {
+          const { data: profile } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', lateComerId).single();
+          if (profile) {
+            const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+            const prompt = `Write a very short, funny, 1-sentence roast for a friend named "${profile.full_name}" who is the absolute LAST person to arrive at our group meetup. Be sarcastic but friendly. Do not use quotes.`;
+            
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`, {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+            });
+            if (response.ok) {
+              const data = await response.json();
+              const roast = data.candidates[0].content.parts[0].text;
+              const avatarImage = profile.avatar_url ? `![Avatar](${profile.avatar_url})` : '🐌';
+              
+              await supabase.from('messages').insert({
+                group_id: props.groupId,
+                user_id: props.currentUserId,
+                content: `🚨 **[LAST TO ARRIVE ALERT]** 🚨\n\n${roast}\n\n${avatarImage}`
+              });
+              
+              alert(`Everyone has arrived except ${profile.full_name}! A roast has been sent to the group chat.`);
+            }
+          }
+        }
+      }
+    } catch(e) { console.error(e); }
   };
 
   const stopTracking = () => {
