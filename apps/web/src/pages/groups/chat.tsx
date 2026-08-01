@@ -4,6 +4,14 @@ import { supabase } from '../../lib/supabase';
 import { ArrowLeft, Send, Settings, Image as ImageIcon, X, Pencil, Trash2, CornerDownLeft, Paperclip, Heart, Smile, Mic, Square, FileText } from 'lucide-solid';
 import 'emoji-picker-element';
 
+declare module "solid-js" {
+  namespace JSX {
+    interface IntrinsicElements {
+      'emoji-picker': any;
+    }
+  }
+}
+
 const renderMessageContent = (content: string) => {
   if (!content) return '';
   
