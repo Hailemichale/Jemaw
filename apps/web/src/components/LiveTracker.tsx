@@ -103,9 +103,11 @@ export default function LiveTracker(props: LiveTrackerProps) {
     }
   });
 
-  const getCustomIcon = (userId: string) => {
+  const getCustomIcon = (userId: string, isStale: boolean = false) => {
     const profile = profileMap()[userId];
     const avatarUrl = profile?.avatar_url || `https://i.pravatar.cc/150?u=${userId}`;
+    
+    const borderColor = isStale ? '#94a3b8' : (userId === props.currentUserId ? '#4f46e5' : '#10b981');
     
     return L.divIcon({
       className: 'custom-leaflet-icon',
@@ -114,7 +116,7 @@ export default function LiveTracker(props: LiveTrackerProps) {
           width: 40px; 
           height: 40px; 
           border-radius: 50%; 
-          border: 3px solid ${userId === props.currentUserId ? '#4f46e5' : '#10b981'};
+          border: 3px solid ${borderColor};
           overflow: hidden;
           box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
           background-color: white;
@@ -147,22 +149,37 @@ export default function LiveTracker(props: LiveTrackerProps) {
     locs.forEach(loc => {
       if (loc.is_arrived) return; // Don't show arrived people on map
       
-      // Ignore stale locations (older than 5 minutes)
+      // Calculate time since last update
       const locTime = new Date(loc.updated_at || loc.created_at || Date.now()).getTime();
-      if (now - locTime > 5 * 60 * 1000) return;
+      const minsAgo = Math.floor((now - locTime) / 60000);
+      const isStale = minsAgo > 5;
       
       const { user_id, lat, lng } = loc;
       bounds.extend([lat, lng]);
       hasValidPoints = true;
 
+      const profile = profileMap()[user_id];
+      const popupContent = `
+        <div class="text-center" style="min-width: 120px;">
+          <b style="font-size: 14px; display: block; margin-bottom: 2px;">${profile?.full_name || 'User'}</b>
+          ${isStale 
+            ? `<span style="font-size: 12px; color: #64748b;">Offline • ${minsAgo}m ago</span>` 
+            : `<span style="font-size: 12px; color: #10b981; font-weight: 600;">● Live</span>`
+          }
+        </div>
+      `;
+
       if (markers[user_id]) {
         markers[user_id].setLatLng([lat, lng]);
+        markers[user_id].setIcon(getCustomIcon(user_id, isStale));
+        markers[user_id].setPopupContent(popupContent);
+        markers[user_id].setOpacity(isStale ? 0.6 : 1);
       } else {
-        const marker = L.marker([lat, lng], { icon: getCustomIcon(user_id) }).addTo(map!);
-        const profile = profileMap()[user_id];
-        if (profile) {
-          marker.bindPopup(`<b>${profile.full_name}</b>`);
-        }
+        const marker = L.marker([lat, lng], { 
+          icon: getCustomIcon(user_id, isStale),
+          opacity: isStale ? 0.6 : 1 
+        }).addTo(map!);
+        marker.bindPopup(popupContent);
         markers[user_id] = marker;
       }
     });
