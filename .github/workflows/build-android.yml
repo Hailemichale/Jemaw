@@ -44,7 +44,9 @@ jobs:
           sed -i 's/targetSdkVersion = 34/targetSdkVersion = 35/g' apps/web/android/variables.gradle
 
       - name: Build Android APK
-        run: ./gradlew assembleDebug --stacktrace
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --stacktrace
         working-directory: apps/web/android
 
       - name: Upload Android APK
