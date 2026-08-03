@@ -247,7 +247,7 @@ export default function MainLayout(props: MainLayoutProps) {
                     <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Install Jemaw Native</p>
                   </div>
                   
-                  <a href="https://github.com/Hailemichale/Jemaw/releases/latest/download/Jemaw_0.1.0_x64_en-US.msi" download class="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors text-left text-sm font-medium" onClick={() => setIsDownloadOpen(false)}>
+                  <a href="https://github.com/Hailemichale/Jemaw/releases/latest/download/Jemaw_0.1.0_x64_en-US.msi" download="Jemaw_0.1.0_x64_en-US.msi" class="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors text-left text-sm font-medium" onClick={() => setIsDownloadOpen(false)}>
                     <span class="text-xl">🪟</span>
                     <div class="flex-1">
                       <span class="block text-slate-900 dark:text-white">Windows PC</span>
@@ -255,7 +255,7 @@ export default function MainLayout(props: MainLayoutProps) {
                     </div>
                   </a>
                   
-                  <a href="https://github.com/Hailemichale/Jemaw/releases/latest/download/app-debug.apk" download class="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors text-left text-sm font-medium" onClick={() => setIsDownloadOpen(false)}>
+                  <a href="https://github.com/Hailemichale/Jemaw/releases/latest/download/app-debug.apk" download="app-debug.apk" class="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors text-left text-sm font-medium" onClick={() => setIsDownloadOpen(false)}>
                     <span class="text-xl">🤖</span>
                     <div class="flex-1">
                       <span class="block text-slate-900 dark:text-white">Android</span>
