@@ -31,6 +31,9 @@ jobs:
       - name: Build Tauri App
         run: npx tauri build
         working-directory: apps/web/src-tauri
+        env:
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
 
       - name: Upload Windows Executable
         uses: actions/upload-artifact@v4
