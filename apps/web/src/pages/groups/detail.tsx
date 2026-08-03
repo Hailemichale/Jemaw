@@ -149,48 +149,48 @@ export default function GroupDetailPage() {
     setFeed(timelineWithNames);
   };
 
+  const fetchGroup = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      navigate('/login', { replace: true });
+      return;
+    }
+    setCurrentUserId(session.user.id);
+
+    const { data: groupData, error } = await supabase
+      .from('groups')
+      .select(`
+        *,
+        group_members(role, user_id)
+      `)
+      .eq('id', params.id)
+      .single();
+
+    if (error || !groupData) {
+      navigate('/groups', { replace: true });
+      return;
+    }
+
+    // Fetch names for members
+    const userIds = groupData.group_members.map((m: any) => m.user_id);
+    const { data: profiles } = await supabase.from('profiles').select('id, full_name').in('id', userIds);
+    const profileMap = profiles?.reduce((acc: any, p: any) => ({ ...acc, [p.id]: p.full_name }), {}) || {};
+    
+    groupData.group_members = groupData.group_members.map((m: any) => ({
+      ...m,
+      full_name: profileMap[m.user_id] || `User ${m.user_id?.substring(0, 4)}`
+    }));
+
+    setGroup(groupData);
+    
+    const savedAvatar = localStorage.getItem(`group_avatar_${groupData.id}`);
+    if (savedAvatar) setLocalAvatar(savedAvatar);
+
+    await fetchFeed();
+    setLoading(false);
+  };
+
   createEffect(() => {
-    const fetchGroup = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        navigate('/login', { replace: true });
-        return;
-      }
-      setCurrentUserId(session.user.id);
-
-      const { data: groupData, error } = await supabase
-        .from('groups')
-        .select(`
-          *,
-          group_members(role, user_id)
-        `)
-        .eq('id', params.id)
-        .single();
-
-      if (error || !groupData) {
-        navigate('/groups', { replace: true });
-        return;
-      }
-
-      // Fetch names for members
-      const userIds = groupData.group_members.map((m: any) => m.user_id);
-      const { data: profiles } = await supabase.from('profiles').select('id, full_name').in('id', userIds);
-      const profileMap = profiles?.reduce((acc: any, p: any) => ({ ...acc, [p.id]: p.full_name }), {}) || {};
-      
-      groupData.group_members = groupData.group_members.map((m: any) => ({
-        ...m,
-        full_name: profileMap[m.user_id] || `User ${m.user_id?.substring(0, 4)}`
-      }));
-
-      setGroup(groupData);
-      
-      const savedAvatar = localStorage.getItem(`group_avatar_${groupData.id}`);
-      if (savedAvatar) setLocalAvatar(savedAvatar);
-
-      await fetchFeed();
-      setLoading(false);
-    };
-
     fetchGroup();
   });
 
