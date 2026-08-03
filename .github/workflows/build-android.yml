@@ -34,7 +34,7 @@ jobs:
         working-directory: apps/web
 
       - name: Add Capacitor Android
-        run: npx cap add android
+        run: npx cap sync android
         working-directory: apps/web
 
       - name: Update Android SDK Version to 35
