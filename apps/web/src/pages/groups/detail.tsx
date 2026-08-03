@@ -334,17 +334,22 @@ export default function GroupDetailPage() {
   };
 
   const handleDeleteExpense = async (expenseId: string) => {
-    if (!confirm("Are you sure you want to delete this expense? This will update everyone's balances.")) return;
+    if (!confirm("Are you sure you want to delete this expense? This cannot be undone.")) return;
+    
     await supabase.from('expenses').delete().eq('id', expenseId);
     
-    await supabase.from('activities').insert([{
-      group_id: group()?.id,
-      user_id: currentUserId(),
-      action_type: 'expense',
-      description: `deleted an expense.`
-    }]);
+    // Also remove the corresponding activity if it exists
+    await supabase.from('activities').delete().eq('group_id', params.id).eq('action_type', 'expense').like('description', `%expense%`);
+    
+    fetchFeed();
+  };
 
-    await fetchFeed();
+  const handleDeleteActivity = async (activityId: string, e: Event) => {
+    e.stopPropagation();
+    if (!confirm("Are you sure you want to delete this activity?")) return;
+    
+    await supabase.from('activities').delete().eq('id', activityId);
+    fetchFeed();
   };
 
   return (
@@ -715,6 +720,17 @@ export default function GroupDetailPage() {
                                   {new Date(item.created_at).toLocaleString()}
                                 </p>
                               </div>
+
+                              <Show when={isAdmin() && item.type !== 'expense'}>
+                                <div class="pt-1 flex flex-col items-end opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    onClick={(e) => handleDeleteActivity(item.id, e)}
+                                    class="text-xs text-rose-500 hover:text-rose-600 dark:text-rose-400 transition-colors bg-rose-50 dark:bg-rose-900/30 px-2 py-1 rounded"
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              </Show>
 
                                 <Show when={item.type === 'expense'}>
                                   <div class="pt-1 flex flex-col items-end">

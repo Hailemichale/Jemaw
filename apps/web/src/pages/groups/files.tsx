@@ -38,7 +38,10 @@ export default function GroupFiles() {
 
       const { data: groupData } = await supabase
         .from('groups')
-        .select('*')
+        .select(`
+          *,
+          group_members(user_id, role)
+        `)
         .eq('id', params.id)
         .single();
       
@@ -182,6 +185,25 @@ ${fileList}`;
   };
 
   const [previewFile, setPreviewFile] = createSignal<any>(null);
+
+  const isAdmin = () => {
+    return group()?.group_members?.find((m: any) => m.user_id === currentUserId())?.role === 'admin';
+  };
+
+  const handleDeleteFile = async (file: any, e?: Event) => {
+    if (e) e.stopPropagation();
+    if (!confirm("Are you sure you want to delete this file from the group?")) return;
+    
+    // Attempt to delete from DB
+    const { error } = await supabase.from('shared_files').delete().eq('id', file.id);
+    if (error) {
+      alert("Failed to delete file: " + error.message);
+      return;
+    }
+    
+    setPreviewFile(null);
+    fetchFiles();
+  };
 
   const getFileIcon = (type: string, size: number = 24) => {
     if (type.startsWith('image/')) return <ImageIcon size={size} class="text-emerald-500" />;
@@ -335,13 +357,24 @@ ${fileList}`;
                 <div class="text-sm text-slate-500 dark:text-slate-400 font-medium">
                   Size: {formatFileSize(previewFile().file_size_kb)} • Uploaded: {new Date(previewFile().created_at).toLocaleDateString()}
                 </div>
-                <a 
-                  href={`${previewFile().file_url}?download=`} 
-                  class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2.5 rounded-xl font-semibold transition-colors shadow-md shadow-indigo-500/20"
-                >
-                  <Download size={18} />
-                  Download File
-                </a>
+                <div class="flex items-center gap-3">
+                  <Show when={isAdmin()}>
+                    <button 
+                      onClick={(e) => handleDeleteFile(previewFile(), e)}
+                      class="flex items-center gap-2 bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:hover:bg-rose-900/50 dark:text-rose-400 px-4 py-2.5 rounded-xl font-semibold transition-colors"
+                    >
+                      <Trash2 size={18} />
+                      <span class="hidden sm:inline">Delete</span>
+                    </button>
+                  </Show>
+                  <a 
+                    href={`${previewFile().file_url}?download=`} 
+                    class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2.5 rounded-xl font-semibold transition-colors shadow-md shadow-indigo-500/20"
+                  >
+                    <Download size={18} />
+                    <span class="hidden sm:inline">Download</span>
+                  </a>
+                </div>
               </div>
               
             </div>
