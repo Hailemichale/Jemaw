@@ -104,7 +104,7 @@ export default function GroupChat() {
         .from('groups')
         .select(`
           *,
-          group_members(user_id)
+          group_members(user_id, role)
         `)
         .eq('id', params.id)
         .single();
@@ -798,6 +798,7 @@ export default function GroupChat() {
         <For each={messages()}>
           {(msg) => {
             const isMe = msg.user_id === currentUserId();
+            const isAdmin = () => group()?.group_members.find((m: any) => m.user_id === currentUserId())?.role === 'admin';
             const isDeleted = () => msg.is_deleted;
             const isEdited = () => msg.is_edited && !msg.is_deleted;
             return (
@@ -828,7 +829,7 @@ export default function GroupChat() {
                             ? 'bg-indigo-600/90 text-white rounded-br-sm' 
                             : 'bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white border border-slate-200/50 dark:border-slate-700/50 rounded-bl-sm'
                       }`}
-                      onContextMenu={(e: MouseEvent) => isMe && !isDeleted() ? openContextMenu(e, msg.id) : undefined}
+                      onContextMenu={(e: MouseEvent) => (isMe || isAdmin()) && !isDeleted() ? openContextMenu(e, msg.id) : undefined}
                       onClick={(e: MouseEvent) => {
                         if (isMe && !isDeleted() && e.detail === 2) {
                           e.preventDefault();
@@ -884,9 +885,9 @@ export default function GroupChat() {
                       </Show>
 
                       {/* Context menu trigger for own messages (3-dot on hover) */}
-                      <Show when={isMe && !isDeleted()}>
+                      <Show when={(isMe || isAdmin()) && !isDeleted()}>
                         <button 
-                          class="absolute -left-8 top-1/2 -translate-y-1/2 opacity-0 group-hover/msg:opacity-100 transition-opacity p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-full hover:bg-white/50 dark:hover:bg-slate-800/50"
+                          class={`absolute ${isMe ? '-left-8' : '-right-8'} top-1/2 -translate-y-1/2 opacity-0 group-hover/msg:opacity-100 transition-opacity p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-full hover:bg-white/50 dark:hover:bg-slate-800/50`}
                           onClick={(e: MouseEvent) => { e.stopPropagation(); openContextMenu(e, msg.id); }}
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
@@ -932,12 +933,14 @@ export default function GroupChat() {
             class="fixed z-[200] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl overflow-hidden animate-in zoom-in-95 fade-in duration-150"
             style={`left: ${contextMenuPos().x}px; top: ${contextMenuPos().y}px;`}
           >
-            <button 
-              onClick={() => { const msg = messages().find(m => m.id === contextMenuMsgId()); if (msg) startEditing(msg); }}
-              class="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
-            >
-              <Pencil size={14} /> Edit
-            </button>
+            <Show when={messages().find(m => m.id === contextMenuMsgId())?.user_id === currentUserId()}>
+              <button 
+                onClick={() => { const msg = messages().find(m => m.id === contextMenuMsgId()); if (msg) startEditing(msg); }}
+                class="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
+              >
+                <Pencil size={14} /> Edit
+              </button>
+            </Show>
             <button 
               onClick={() => { const id = contextMenuMsgId(); if (id) deleteMessage(id); }}
               class="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors"

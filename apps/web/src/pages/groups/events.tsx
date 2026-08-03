@@ -15,7 +15,22 @@ export default function GroupEventsPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = createSignal(false);
   const [title, setTitle] = createSignal('');
   const [date, setDate] = createSignal('');
+  const [description, setDescription] = createSignal('');
+  const [reminderSchedule, setReminderSchedule] = createSignal('None');
   const [isSubmitting, setIsSubmitting] = createSignal(false);
+
+  // Edit Event Modal
+  const [isEditEventModalOpen, setIsEditEventModalOpen] = createSignal(false);
+  const [editEventId, setEditEventId] = createSignal('');
+  const [editEventTitle, setEditEventTitle] = createSignal('');
+  const [editEventDate, setEditEventDate] = createSignal('');
+  const [editEventDescription, setEditEventDescription] = createSignal('');
+  const [editEventReminder, setEditEventReminder] = createSignal('None');
+  const [isUpdatingEvent, setIsUpdatingEvent] = createSignal(false);
+
+  const isAdmin = () => {
+    return group()?.group_members?.find((m: any) => m.user_id === currentUserId())?.role === 'admin';
+  };
 
   // Event Detail / Memory Box Modal
   const [selectedEvent, setSelectedEvent] = createSignal<any>(null);
@@ -95,6 +110,8 @@ export default function GroupEventsPage() {
     const { error } = await supabase.from('events').insert({
       title: title(),
       date: date(),
+      description: description(),
+      reminder_schedule: reminderSchedule(),
       group_id: params.id,
       created_by: currentUserId()
     });
@@ -103,6 +120,8 @@ export default function GroupEventsPage() {
       setIsCreateModalOpen(false);
       setTitle('');
       setDate('');
+      setDescription('');
+      setReminderSchedule('None');
       fetchEvents();
     }
   };
@@ -156,7 +175,15 @@ export default function GroupEventsPage() {
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
     if (!apiKey) return;
     setIsAnnouncing(event.id);
-    const prompt = `Write a super energetic, highly attractive, and fun 2-sentence announcement for an upcoming group event called "${event.title}" happening on ${new Date(event.date).toLocaleDateString()}. Use lots of emojis. Do not use quotes. Get everyone hyped!`;
+    const prompt = `Write a super energetic, highly attractive, and fun 2-sentence announcement for an upcoming group event called "${event.title}" happening on ${new Date(event.date).toLocaleDateString()}. The event description is: "${event.description || 'No description provided'}". Use lots of emojis. Do not use quotes. Get everyone hyped!
+    Also, choose the BEST matching GIF from this list for the event:
+    ${FUN_GIFS.join('\n')}
+    
+    Return a valid JSON string exactly in this format:
+    {
+      "text": "Your energetic announcement text here...",
+      "gifUrl": "The chosen GIF url from the list"
+    }`;
     try {
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`, {
         method: "POST",
@@ -165,9 +192,17 @@ export default function GroupEventsPage() {
       });
       if (!response.ok) throw new Error("Failed to generate announcement");
       const data = await response.json();
-      const text = data.candidates[0].content.parts[0].text;
-      const randomGif = FUN_GIFS[Math.floor(Math.random() * FUN_GIFS.length)];
-      const messageContent = `${text}\n\n![Hype GIF](${randomGif})`;
+      const aiResponse = data.candidates[0].content.parts[0].text.replace(/```json/g, '').replace(/```/g, '').trim();
+      
+      let parsed = { text: '', gifUrl: FUN_GIFS[0] };
+      try {
+        parsed = JSON.parse(aiResponse);
+      } catch (err) {
+        parsed.text = aiResponse;
+        parsed.gifUrl = FUN_GIFS[Math.floor(Math.random() * FUN_GIFS.length)];
+      }
+
+      const messageContent = `${parsed.text}\n\n![Hype GIF](${parsed.gifUrl})`;
       await supabase.from('messages').insert({
         group_id: event.group_id,
         user_id: currentUserId(),
@@ -243,6 +278,46 @@ export default function GroupEventsPage() {
   const upcomingEvents = () => events().filter(e => !isEventPast(e.date));
   const pastEvents = () => events().filter(e => isEventPast(e.date)).reverse();
 
+  const openEditEvent = () => {
+    const event = selectedEvent();
+    if (!event) return;
+    setEditEventId(event.id);
+    setEditEventTitle(event.title);
+    setEditEventDate(event.date);
+    setEditEventDescription(event.description || '');
+    setEditEventReminder(event.reminder_schedule || 'None');
+    setIsEditEventModalOpen(true);
+  };
+
+  const handleUpdateEvent = async (e: Event) => {
+    e.preventDefault();
+    if (!editEventTitle() || !editEventDate() || isUpdatingEvent()) return;
+    setIsUpdatingEvent(true);
+    await supabase.from('events').update({
+      title: editEventTitle(),
+      date: editEventDate(),
+      description: editEventDescription(),
+      reminder_schedule: editEventReminder()
+    }).eq('id', editEventId());
+    
+    setIsEditEventModalOpen(false);
+    setIsUpdatingEvent(false);
+    
+    const { data } = await supabase.from('events').select('*').eq('id', editEventId()).single();
+    if (data) setSelectedEvent(data);
+    fetchEvents();
+  };
+
+  const handleDeleteEvent = async () => {
+    const event = selectedEvent();
+    if (!event) return;
+    if (!confirm("Are you sure you want to delete this event? All memories will be lost!")) return;
+    
+    await supabase.from('events').delete().eq('id', event.id);
+    setSelectedEvent(null);
+    fetchEvents();
+  };
+
   return (
     <MainLayout title="Group Events">
       <div class="max-w-5xl mx-auto pt-6 pb-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -281,12 +356,70 @@ export default function GroupEventsPage() {
                   <input type="text" required value={title()} onInput={(e) => setTitle(e.currentTarget.value)} placeholder="e.g. Dinner Party" class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 transition-shadow" />
                 </div>
                 <div>
-                  <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Date</label>
-                  <input type="date" required value={date()} onInput={(e) => setDate(e.currentTarget.value)} class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 transition-shadow" />
+                  <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Description (Optional)</label>
+                  <textarea value={description()} onInput={(e) => setDescription(e.currentTarget.value)} placeholder="What is this event about?" rows="3" class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 transition-shadow resize-none"></textarea>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Date</label>
+                    <input type="date" required value={date()} onInput={(e) => setDate(e.currentTarget.value)} class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 transition-shadow" />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">AI Reminder</label>
+                    <select value={reminderSchedule()} onChange={(e) => setReminderSchedule(e.currentTarget.value)} class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 transition-shadow">
+                      <option value="None">None</option>
+                      <option value="1 Day Before">1 Day Before</option>
+                      <option value="1 Week Before">1 Week Before</option>
+                      <option value="Twice a Week">Twice a Week</option>
+                    </select>
+                  </div>
                 </div>
                 <div class="pt-4 mt-2">
                   <button type="submit" disabled={isSubmitting()} class="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl transition-colors shadow-md shadow-indigo-600/20 disabled:opacity-50">
                     {isSubmitting() ? 'Saving...' : 'Create Event'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </Show>
+
+        {/* Edit Event Modal */}
+        <Show when={isEditEventModalOpen()}>
+          <div class="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsEditEventModalOpen(false)}></div>
+            <div class="bg-white dark:bg-slate-900 rounded-3xl p-8 max-w-md w-full shadow-2xl relative z-10 animate-in zoom-in-95 duration-200 border border-slate-200 dark:border-slate-800">
+              <button onClick={() => setIsEditEventModalOpen(false)} class="absolute top-6 right-6 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">
+                <X size={24} />
+              </button>
+              <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6">Edit Event</h2>
+              <form onSubmit={handleUpdateEvent} class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Event Title</label>
+                  <input type="text" required value={editEventTitle()} onInput={(e) => setEditEventTitle(e.currentTarget.value)} class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 transition-shadow" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Description</label>
+                  <textarea value={editEventDescription()} onInput={(e) => setEditEventDescription(e.currentTarget.value)} rows="3" class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 transition-shadow resize-none"></textarea>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Date</label>
+                    <input type="date" required value={editEventDate()} onInput={(e) => setEditEventDate(e.currentTarget.value)} class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 transition-shadow" />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">AI Reminder</label>
+                    <select value={editEventReminder()} onChange={(e) => setEditEventReminder(e.currentTarget.value)} class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 transition-shadow">
+                      <option value="None">None</option>
+                      <option value="1 Day Before">1 Day Before</option>
+                      <option value="1 Week Before">1 Week Before</option>
+                      <option value="Twice a Week">Twice a Week</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="pt-4 mt-2">
+                  <button type="submit" disabled={isUpdatingEvent()} class="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl transition-colors shadow-md shadow-indigo-600/20 disabled:opacity-50">
+                    {isUpdatingEvent() ? 'Saving...' : 'Save Changes'}
                   </button>
                 </div>
               </form>
@@ -306,9 +439,19 @@ export default function GroupEventsPage() {
                     <span class="flex items-center gap-1"><CalendarIcon size={14} /> {new Date(selectedEvent().date).toLocaleDateString()}</span>
                   </div>
                 </div>
-                <button onClick={() => setSelectedEvent(null)} class="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 bg-white dark:bg-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 rounded-full transition-colors">
-                  <X size={20} />
-                </button>
+                <div class="flex items-center gap-2">
+                  <Show when={isAdmin()}>
+                    <button onClick={openEditEvent} class="px-3 py-1.5 text-sm font-semibold bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 rounded-lg transition-colors">
+                      Edit
+                    </button>
+                    <button onClick={handleDeleteEvent} class="px-3 py-1.5 text-sm font-semibold bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-500/20 rounded-lg transition-colors mr-2">
+                      Delete
+                    </button>
+                  </Show>
+                  <button onClick={() => setSelectedEvent(null)} class="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 bg-white dark:bg-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 rounded-full transition-colors">
+                    <X size={20} />
+                  </button>
+                </div>
               </div>
 
               <div class="flex-1 overflow-y-auto p-6 bg-slate-50/50 dark:bg-slate-950/50">

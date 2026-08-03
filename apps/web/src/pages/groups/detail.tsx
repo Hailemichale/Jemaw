@@ -26,6 +26,14 @@ export default function GroupDetailPage() {
   const [expenseCurrency, setExpenseCurrency] = createSignal('USD');
   const [isSubmittingExpense, setIsSubmittingExpense] = createSignal(false);
 
+  // Edit Expense form state
+  const [isEditExpenseModalOpen, setIsEditExpenseModalOpen] = createSignal(false);
+  const [editExpenseId, setEditExpenseId] = createSignal('');
+  const [editExpenseDesc, setEditExpenseDesc] = createSignal('');
+  const [editExpenseAmount, setEditExpenseAmount] = createSignal('');
+  const [editExpenseCurrency, setEditExpenseCurrency] = createSignal('USD');
+  const [isUpdatingExpense, setIsUpdatingExpense] = createSignal(false);
+
   // Feed state
   const [feed, setFeed] = createSignal<any[]>([]);
   const [expenses, setExpenses] = createSignal<any[]>([]);
@@ -114,7 +122,8 @@ export default function GroupDetailPage() {
         title: e.description,
         amount: e.amount,
         user_id: e.paid_by,
-        created_at: e.created_at
+        created_at: e.created_at,
+        raw_expense: e
       })),
       ...rawActivities.map(a => ({
         id: a.id,
@@ -184,6 +193,10 @@ export default function GroupDetailPage() {
 
     fetchGroup();
   });
+
+  const isAdmin = () => {
+    return group()?.group_members?.find((m: any) => m.user_id === currentUserId())?.role === 'admin';
+  };
 
   const saveAvatar = (data: string) => {
     if (!group()) return;
@@ -276,6 +289,62 @@ export default function GroupDetailPage() {
     setExpenseAmount('');
     setIsExpenseModalOpen(false);
     setIsSubmittingExpense(false);
+  };
+
+  const openEditExpense = (expense: any) => {
+    setEditExpenseId(expense.id);
+    // Try to parse out the currency from description if it was added automatically
+    let desc = expense.description || '';
+    let curr = 'USD';
+    const match = desc.match(/\((USD|ETB|EUR|GBP)\)$/);
+    if (match) {
+      curr = match[1];
+      desc = desc.replace(/\s*\((USD|ETB|EUR|GBP)\)$/, '');
+    }
+    setEditExpenseDesc(desc);
+    setEditExpenseAmount(expense.amount?.toString() || '');
+    setEditExpenseCurrency(curr);
+    setIsEditExpenseModalOpen(true);
+  };
+
+  const handleUpdateExpense = async (e: Event) => {
+    e.preventDefault();
+    if (!editExpenseDesc() || !editExpenseAmount() || isUpdatingExpense()) return;
+    
+    setIsUpdatingExpense(true);
+    const amount = parseFloat(editExpenseAmount());
+    const finalDesc = `${editExpenseDesc()} (${editExpenseCurrency()})`;
+
+    await supabase.from('expenses').update({
+      description: finalDesc,
+      amount: amount
+    }).eq('id', editExpenseId());
+
+    await supabase.from('activities').insert([{
+      group_id: group()?.id,
+      user_id: currentUserId(),
+      action_type: 'expense',
+      description: `updated an expense to ${amount.toFixed(2)} ${editExpenseCurrency()} for ${editExpenseDesc()}`
+    }]);
+
+    await fetchFeed();
+    
+    setIsEditExpenseModalOpen(false);
+    setIsUpdatingExpense(false);
+  };
+
+  const handleDeleteExpense = async (expenseId: string) => {
+    if (!confirm("Are you sure you want to delete this expense? This will update everyone's balances.")) return;
+    await supabase.from('expenses').delete().eq('id', expenseId);
+    
+    await supabase.from('activities').insert([{
+      group_id: group()?.id,
+      user_id: currentUserId(),
+      action_type: 'expense',
+      description: `deleted an expense.`
+    }]);
+
+    await fetchFeed();
   };
 
   return (
@@ -444,6 +513,75 @@ export default function GroupDetailPage() {
           </div>
         </Show>
 
+        {/* Edit Expense Modal */}
+        <Show when={isEditExpenseModalOpen()}>
+          <div class="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsEditExpenseModalOpen(false)}></div>
+            <div class="bg-white dark:bg-slate-900 rounded-3xl p-8 max-w-md w-full shadow-2xl relative z-10 animate-in zoom-in-95 duration-200 border border-slate-200 dark:border-slate-800">
+              <button 
+                onClick={() => setIsEditExpenseModalOpen(false)}
+                class="absolute top-6 right-6 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+              >
+                <X size={24} />
+              </button>
+              
+              <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
+                <DollarSign class="text-emerald-500" /> Edit Expense
+              </h2>
+              
+              <form onSubmit={handleUpdateExpense} class="space-y-6">
+                <div>
+                  <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Description</label>
+                  <input 
+                    type="text" 
+                    required
+                    value={editExpenseDesc()}
+                    onInput={(e) => setEditExpenseDesc(e.currentTarget.value)}
+                    class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+                
+                <div>
+                  <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Amount & Currency</label>
+                  <div class="flex gap-3">
+                    <select 
+                      value={editExpenseCurrency()} 
+                      onChange={(e) => setEditExpenseCurrency(e.currentTarget.value)}
+                      class="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 font-medium"
+                    >
+                      <option value="USD">USD ($)</option>
+                      <option value="ETB">ETB (Br)</option>
+                      <option value="EUR">EUR (€)</option>
+                      <option value="GBP">GBP (£)</option>
+                    </select>
+                    <div class="relative flex-1">
+                      <input 
+                        type="number"
+                        step="0.01" 
+                        min="0.01"
+                        required
+                        value={editExpenseAmount()}
+                        onInput={(e) => setEditExpenseAmount(e.currentTarget.value)}
+                        class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 font-medium"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div class="pt-6 border-t border-slate-200 dark:border-slate-800">
+                  <button 
+                    type="submit"
+                    disabled={isUpdatingExpense()}
+                    class="w-full flex items-center justify-center py-3 px-4 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-500 transition-colors shadow-md shadow-emerald-500/20 disabled:opacity-50"
+                  >
+                    {isUpdatingExpense() ? 'Updating...' : 'Save Changes'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </Show>
+
         <div class="mb-6">
           <A href="/" class="inline-flex items-center text-sm font-medium text-slate-500 hover:text-indigo-600 transition-colors">
             <ArrowLeft size={16} class="mr-1" /> Back to Dashboard
@@ -578,14 +716,29 @@ export default function GroupDetailPage() {
                                 </p>
                               </div>
 
-                              {/* Render amount only for expenses */}
-                              <Show when={item.type === 'expense'}>
-                                <div class="pt-1 text-right">
-                                  <span class="text-emerald-600 dark:text-emerald-400 font-bold">
-                                    {item.amount?.toFixed(2)}
-                                  </span>
-                                </div>
-                              </Show>
+                                <Show when={item.type === 'expense'}>
+                                  <div class="pt-1 flex flex-col items-end">
+                                    <span class="text-emerald-600 dark:text-emerald-400 font-bold mb-1">
+                                      {item.amount?.toFixed(2)}
+                                    </span>
+                                    <Show when={isAdmin()}>
+                                      <div class="flex gap-2">
+                                        <button 
+                                          onClick={() => openEditExpense(item.raw_expense)}
+                                          class="text-xs text-indigo-500 hover:text-indigo-600 dark:text-indigo-400 transition-colors"
+                                        >
+                                          Edit
+                                        </button>
+                                        <button 
+                                          onClick={() => handleDeleteExpense(item.id)}
+                                          class="text-xs text-rose-500 hover:text-rose-600 dark:text-rose-400 transition-colors"
+                                        >
+                                          Delete
+                                        </button>
+                                      </div>
+                                    </Show>
+                                  </div>
+                                </Show>
 
                             </div>
                           )}

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Jemaw</string>
+    <string name="title_activity_main">Jemaw</string>
+    <string name="package_name">com.jemaw.app</string>
+    <string name="custom_url_scheme">com.jemaw.app</string>
+</resources>
