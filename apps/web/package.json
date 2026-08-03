@@ -21,8 +21,10 @@
     "vite-plugin-solid": "^2.11.14"
   },
   "dependencies": {
+    "@capacitor-community/background-geolocation": "^1.2.26",
     "@capacitor/android": "^6.1.1",
     "@capacitor/core": "^6.1.1",
+    "@capacitor/geolocation": "^6.1.1",
     "@capacitor/ios": "^6.1.1",
     "@capgo/capacitor-updater": "^6.50.2",
     "@daily-co/daily-js": "^0.91.0",

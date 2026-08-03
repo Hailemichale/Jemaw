@@ -84,7 +84,7 @@ export default function CalendarPage() {
     // 1. Get user's groups
     const { data: userGroups } = await supabase
       .from('groups')
-      .select(`id, name, group_members!inner(user_id)`)
+      .select(`id, name, group_members!inner(user_id, role)`)
       .eq('group_members.user_id', session.user.id);
 
     if (userGroups) {
@@ -107,6 +107,11 @@ export default function CalendarPage() {
   createEffect(() => {
     fetchEvents();
   });
+
+  const isAdmin = (groupId: string) => {
+    const group = groups().find(g => g.id === groupId);
+    return group?.group_members?.[0]?.role === 'admin';
+  };
 
   // Fetch memories when an event is selected
   createEffect(() => {
@@ -429,6 +434,7 @@ export default function CalendarPage() {
                           eventId={selectedEvent().id} 
                           groupId={selectedEvent().group_id} 
                           currentUserId={currentUserId()} 
+                          isAdmin={isAdmin(selectedEvent().group_id)}
                         />
                       </div>
                     </Show>

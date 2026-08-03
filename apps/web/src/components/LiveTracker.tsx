@@ -3,11 +3,15 @@ import { supabase } from '../lib/supabase';
 import { MapPin, Navigation, XCircle, CheckCircle, Navigation2 } from 'lucide-solid';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { Capacitor, registerPlugin } from '@capacitor/core';
+
+const BackgroundGeolocation = registerPlugin<any>('BackgroundGeolocation');
 
 interface LiveTrackerProps {
   eventId: string;
   groupId: string;
   currentUserId: string;
+  isAdmin?: boolean;
 }
 
 export default function LiveTracker(props: LiveTrackerProps) {
@@ -19,7 +23,7 @@ export default function LiveTracker(props: LiveTrackerProps) {
   let mapContainer: HTMLDivElement | undefined;
   let map: L.Map | null = null;
   let markers: Record<string, L.Marker> = {};
-  let watchId: number | null = null;
+  let watchId: string | number | null = null;
   let channel: any = null;
 
   // Load profiles for the group
@@ -36,9 +40,11 @@ export default function LiveTracker(props: LiveTrackerProps) {
     fetchProfiles();
   });
 
+  let isInitialLoad = true;
+
   // Fetch initial locations and subscribe
   createEffect(() => {
-    if (!isOptedIn()) return;
+    if (!isOptedIn() && !props.isAdmin) return;
 
     const fetchLocations = async () => {
       const { data } = await supabase.from('event_locations').select('*').eq('event_id', props.eventId);
@@ -86,7 +92,7 @@ export default function LiveTracker(props: LiveTrackerProps) {
 
   // Init Leaflet map
   createEffect(() => {
-    if (isOptedIn() && mapContainer && !map) {
+    if ((isOptedIn() || props.isAdmin) && mapContainer && !map) {
       map = L.map(mapContainer).setView([0, 0], 2);
       
       L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
@@ -136,9 +142,14 @@ export default function LiveTracker(props: LiveTrackerProps) {
 
     const bounds = L.latLngBounds([]);
     let hasValidPoints = false;
+    const now = new Date().getTime();
 
     locs.forEach(loc => {
       if (loc.is_arrived) return; // Don't show arrived people on map
+      
+      // Ignore stale locations (older than 5 minutes)
+      const locTime = new Date(loc.updated_at || loc.created_at || Date.now()).getTime();
+      if (now - locTime > 5 * 60 * 1000) return;
       
       const { user_id, lat, lng } = loc;
       bounds.extend([lat, lng]);
@@ -157,6 +168,22 @@ export default function LiveTracker(props: LiveTrackerProps) {
     });
 
     if (hasValidPoints && Object.keys(markers).length > 0) {
+      if (isInitialLoad) {
+        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+        isInitialLoad = false;
+      }
+    }
+  };
+
+  const handleRecenter = () => {
+    if (!map) return;
+    const bounds = L.latLngBounds([]);
+    let hasValidPoints = false;
+    Object.values(markers).forEach(marker => {
+      bounds.extend(marker.getLatLng());
+      hasValidPoints = true;
+    });
+    if (hasValidPoints) {
       map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
     }
   };
@@ -171,32 +198,67 @@ export default function LiveTracker(props: LiveTrackerProps) {
     } catch(e) { console.error(e); }
   };
 
-  const startTracking = () => {
-    if (!navigator.geolocation) {
-      alert('Geolocation is not supported by your browser');
-      return;
-    }
-    
+  const startTracking = async () => {
     setIsOptedIn(true);
     broadcastMessage(`📍 I've just started sharing my live location! See you soon.`);
     
-    // Send first update immediately
-    navigator.geolocation.getCurrentPosition(updateLocation, (err) => {
-      alert("Please allow location access to use this feature.");
-      setIsOptedIn(false);
-    }, { enableHighAccuracy: true });
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const watcher_id = await BackgroundGeolocation.addWatcher(
+          {
+            backgroundMessage: "Tracking your location for the group event.",
+            backgroundTitle: "Jemaw Event Tracking",
+            requestPermissions: true,
+            stale: false,
+            distanceFilter: 10
+          },
+          function callback(location: any, error: any) {
+            if (error) {
+              console.error(error);
+              return;
+            }
+            if (location) {
+              updateLocation({
+                coords: {
+                  latitude: location.latitude,
+                  longitude: location.longitude,
+                  accuracy: location.accuracy
+                }
+              } as GeolocationPosition);
+            }
+          }
+        );
+        watchId = watcher_id;
+      } catch (err) {
+        console.error("Failed to start background tracking", err);
+        setIsOptedIn(false);
+      }
+    } else {
+      if (!navigator.geolocation) {
+        alert('Geolocation is not supported by your browser');
+        setIsOptedIn(false);
+        return;
+      }
+      
+      navigator.geolocation.getCurrentPosition(updateLocation, (err) => {
+        alert("Please allow location access to use this feature.");
+        setIsOptedIn(false);
+      }, { enableHighAccuracy: true });
 
-    // Watch for updates
-    watchId = navigator.geolocation.watchPosition(updateLocation, console.error, {
-      enableHighAccuracy: true,
-      maximumAge: 10000,
-      timeout: 5000
-    });
+      watchId = navigator.geolocation.watchPosition(updateLocation, console.error, {
+        enableHighAccuracy: true,
+        maximumAge: 10000,
+        timeout: 5000
+      });
+    }
   };
 
   const updateLocation = async (position: GeolocationPosition) => {
     if (isArrived()) return;
-    const { latitude, longitude } = position.coords;
+    const { latitude, longitude, accuracy } = position.coords;
+    
+    // Ignore highly inaccurate points to prevent map jumping
+    if (accuracy && accuracy > 100) return;
     
     await supabase.from('event_locations').upsert({
       event_id: props.eventId,
@@ -280,7 +342,11 @@ export default function LiveTracker(props: LiveTrackerProps) {
 
   const stopTracking = () => {
     if (watchId !== null) {
-      navigator.geolocation.clearWatch(watchId);
+      if (Capacitor.isNativePlatform() && typeof watchId === 'string') {
+        BackgroundGeolocation.removeWatcher({ id: watchId });
+      } else {
+        navigator.geolocation.clearWatch(watchId as number);
+      }
       watchId = null;
     }
   };
@@ -321,7 +387,7 @@ export default function LiveTracker(props: LiveTrackerProps) {
         </div>
       </Show>
 
-      <Show when={isOptedIn() && !isArrived()}>
+      <Show when={(isOptedIn() || props.isAdmin) && !isArrived()}>
         <div class="relative w-full h-[400px]">
           {/* Map Container */}
           <div ref={mapContainer!} class="absolute inset-0 z-0"></div>
@@ -329,19 +395,32 @@ export default function LiveTracker(props: LiveTrackerProps) {
           {/* Overlay Controls */}
           <div class="absolute bottom-4 left-0 right-0 z-[400] flex justify-center pointer-events-none px-4">
              <div class="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-3 rounded-2xl shadow-xl pointer-events-auto border border-slate-200 dark:border-slate-800 flex items-center gap-4">
-                <div class="flex items-center gap-2">
-                  <span class="relative flex h-3 w-3">
-                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                    <span class="relative inline-flex rounded-full h-3 w-3 bg-indigo-500"></span>
-                  </span>
-                  <span class="text-sm font-medium text-slate-700 dark:text-slate-200">Sharing Location...</span>
-                </div>
                 <button 
-                  onClick={markArrived}
-                  class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-semibold rounded-xl shadow-sm transition-colors flex items-center gap-2"
+                  onClick={handleRecenter}
+                  class="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm font-semibold rounded-xl shadow-sm transition-colors flex items-center gap-2"
                 >
-                  <CheckCircle size={16} /> I've Arrived!
+                  <MapPin size={16} /> Recenter
                 </button>
+                <Show when={isOptedIn()}>
+                  <div class="flex items-center gap-2">
+                    <span class="relative flex h-3 w-3">
+                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                      <span class="relative inline-flex rounded-full h-3 w-3 bg-indigo-500"></span>
+                    </span>
+                    <span class="hidden sm:inline text-sm font-medium text-slate-700 dark:text-slate-200">Sharing...</span>
+                  </div>
+                  <button 
+                    onClick={markArrived}
+                    class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-semibold rounded-xl shadow-sm transition-colors flex items-center gap-2"
+                  >
+                    <CheckCircle size={16} /> I've Arrived!
+                  </button>
+                </Show>
+                <Show when={!isOptedIn() && props.isAdmin}>
+                  <div class="flex items-center gap-2 px-2">
+                    <span class="text-sm font-medium text-slate-500 dark:text-slate-400">Admin View Only</span>
+                  </div>
+                </Show>
              </div>
           </div>
         </div>
