@@ -1,6 +1,6 @@
 /* @refresh reload */
 import { render } from 'solid-js/web';
-import { Router } from '@solidjs/router';
+import { HashRouter } from '@solidjs/router';
 import './index.css';
 import App from './App';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
@@ -17,9 +17,9 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
 
 render(
   () => (
-    <Router>
+    <HashRouter>
       <App />
-    </Router>
+    </HashRouter>
   ),
   root!
 );
