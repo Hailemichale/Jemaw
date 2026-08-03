@@ -352,6 +352,24 @@ export default function GroupDetailPage() {
     fetchFeed();
   };
 
+  const handleRemoveMember = async (memberId: string) => {
+    if (!confirm("Are you sure you want to remove this member from the group?")) return;
+    
+    const { error } = await supabase.from('group_members').delete().eq('group_id', params.id).eq('user_id', memberId);
+    
+    if (!error) {
+      await supabase.from('activities').insert([{
+        group_id: params.id,
+        user_id: currentUserId(),
+        action_type: 'other',
+        description: `removed a member from the group.`
+      }]);
+      fetchGroup();
+    } else {
+      alert("Error removing member: " + error.message);
+    }
+  };
+
   return (
     <MainLayout title={group() ? group().name : 'Group Details'}>
       <div class="pt-2 pb-12 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
@@ -780,13 +798,25 @@ export default function GroupDetailPage() {
                                 {member.full_name}
                               </span>
                             </div>
-                            <span class={`text-[10px] uppercase font-bold px-2 py-1 rounded-md ${
-                              member.role === 'admin' 
-                                ? 'text-rose-600 bg-rose-50 dark:text-rose-400 dark:bg-rose-500/10' 
-                                : 'text-slate-600 bg-slate-100 dark:text-slate-400 dark:bg-slate-800'
-                            }`}>
-                              {member.role || 'member'}
-                            </span>
+                            <div class="flex items-center gap-2">
+                              <span class={`text-[10px] uppercase font-bold px-2 py-1 rounded-md ${
+                                member.role === 'admin' 
+                                  ? 'text-rose-600 bg-rose-50 dark:text-rose-400 dark:bg-rose-500/10' 
+                                  : 'text-slate-600 bg-slate-100 dark:text-slate-400 dark:bg-slate-800'
+                              }`}>
+                                {member.role || 'member'}
+                              </span>
+                              
+                              <Show when={isAdmin() && member.user_id !== currentUserId()}>
+                                <button 
+                                  onClick={() => handleRemoveMember(member.user_id)}
+                                  class="opacity-0 group-hover:opacity-100 p-1.5 text-rose-500 hover:text-white hover:bg-rose-500 rounded-md transition-all"
+                                  title="Remove Member"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </Show>
+                            </div>
                           </div>
                         )}
                       </For>
