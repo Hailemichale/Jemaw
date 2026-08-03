@@ -233,34 +233,43 @@ export default function MainLayout(props: MainLayoutProps) {
               <button 
                 class="relative p-2.5 text-indigo-500 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-900/20 rounded-full transition-colors flex items-center gap-2"
                 onClick={() => setIsDownloadOpen(!isDownloadOpen())}
+                type="button"
+                aria-label="Download Applications"
               >
-                <DownloadCloud size={20} />
-                <span class="hidden sm:inline text-sm font-medium">Download App</span>
+                <DownloadCloud size={20} class="pointer-events-none" />
+                <span class="hidden sm:inline text-sm font-medium pointer-events-none">Download App</span>
               </button>
               <Show when={isDownloadOpen()}>
-                <div class="absolute top-full right-0 mt-2 w-56 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-50 py-2 animate-in fade-in slide-in-from-top-4">
+                {/* Backdrop for mobile to handle outside clicks */}
+                <div class="fixed inset-0 z-40 sm:hidden" onClick={() => setIsDownloadOpen(false)}></div>
+                <div class="absolute top-full right-0 mt-2 w-64 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-50 py-2 animate-in fade-in slide-in-from-top-4">
                   <div class="px-4 py-2 border-b border-slate-100 dark:border-slate-800 mb-1">
                     <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Install Jemaw Native</p>
                   </div>
-                  <a href="https://github.com/Hailemichale/Jemaw/releases/latest" target="_blank" class="flex items-center px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors" onClick={() => setIsDownloadOpen(false)}>
-                    <span class="mr-3 text-lg">🪟</span> Windows (.exe)
-                  </a>
-                  <a href="https://github.com/Hailemichale/Jemaw/releases/latest" target="_blank" class="flex items-center px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors" onClick={() => setIsDownloadOpen(false)}>
-                    <span class="mr-3 text-lg">🤖</span> Android (.apk)
-                  </a>
-                  <a href="https://github.com/Hailemichale/Jemaw/releases/latest" target="_blank" class="flex items-center px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors" onClick={() => setIsDownloadOpen(false)}>
-                    <span class="mr-3 text-lg">🍎</span> Mac (.dmg)
-                  </a>
-                  <a href="https://github.com/Hailemichale/Jemaw/releases/latest/download/Jemaw-Setup.msi" class="w-full flex items-center gap-3 px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors text-left text-sm font-medium" onClick={() => setIsDownloadOpen(false)}>
-                    <Monitor size={16} class="text-indigo-500" />
+                  
+                  <a href="https://github.com/Hailemichale/Jemaw/releases/latest/download/Jemaw_0.1.0_x64_en-US.msi" download class="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors text-left text-sm font-medium" onClick={() => setIsDownloadOpen(false)}>
+                    <span class="text-xl">🪟</span>
                     <div class="flex-1">
                       <span class="block text-slate-900 dark:text-white">Windows PC</span>
-                      <span class="block text-xs text-slate-500">.msi Installer</span>
+                      <span class="block text-xs text-slate-500 dark:text-slate-400">.msi Installer</span>
                     </div>
                   </a>
-                  <a href="https://github.com/Hailemichale/Jemaw/releases/latest" target="_blank" class="flex items-center px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors" onClick={() => setIsDownloadOpen(false)}>
-                    <span class="mr-3 text-lg">📱</span> iPhone (.ipa)
+                  
+                  <a href="https://github.com/Hailemichale/Jemaw/releases/latest/download/app-debug.apk" download class="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors text-left text-sm font-medium" onClick={() => setIsDownloadOpen(false)}>
+                    <span class="text-xl">🤖</span>
+                    <div class="flex-1">
+                      <span class="block text-slate-900 dark:text-white">Android</span>
+                      <span class="block text-xs text-slate-500 dark:text-slate-400">.apk Application</span>
+                    </div>
                   </a>
+
+                  <div class="w-full flex items-center gap-3 px-4 py-2.5 opacity-50 cursor-not-allowed text-left text-sm font-medium">
+                    <span class="text-xl">🍎</span>
+                    <div class="flex-1">
+                      <span class="block text-slate-900 dark:text-white">iOS & Mac</span>
+                      <span class="block text-xs text-slate-500 dark:text-slate-400">Coming Soon</span>
+                    </div>
+                  </div>
                 </div>
               </Show>
             </div>
